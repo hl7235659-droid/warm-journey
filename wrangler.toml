@@ -1,0 +1,17 @@
+name = "warm-journey"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "warm-journey-db"
+database_id = "87ee3b36-9356-4ff2-9f0b-210178f588df"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "warm-journey-assets"
+
+[vars]
+JWT_SECRET = "change-me-in-production"
+NEXT_PUBLIC_APP_URL = "http://localhost:3000"

@@ -1,0 +1,35 @@
+{
+  "name": "warm-journey",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "pages:build": "npx vercel build && npx @cloudflare/next-on-pages --skip-build",
+    "pages:deploy": "npx wrangler pages deploy .vercel/output/static",
+    "db:migrate": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/schema.sql",
+    "db:migrate:prod": "wrangler d1 execute warm-journey-db --file=src/lib/db/schema.sql",
+    "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql"
+  },
+  "dependencies": {
+    "next": "15.3.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "@cloudflare/next-on-pages": "^1.13.10",
+    "jose": "^5.10.0",
+    "zod": "^3.24.1",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250717.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "tailwindcss": "^4.1.11",
+    "@tailwindcss/postcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.19.0"
+  }
+}
