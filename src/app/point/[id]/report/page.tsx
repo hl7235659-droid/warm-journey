@@ -43,29 +43,29 @@ export default function ReportPage() {
   }
 
   if (done) return (
-    <>
+    <div className="slide">
       <nav className="navbar">
-        <a href={`/point/${params.id}`} className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem' }}>← 返回</a>
-        <span style={{ fontWeight: 600 }}>上报异常</span>
+        <a href={`/point/${params.id}`} className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>← 返回</a>
+        <span className="navbar-title">上报异常</span>
       </nav>
-      <main className="page" style={{ paddingTop: '3rem', textAlign: 'center' }}>
-        <p style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</p>
-        <h2 style={{ marginBottom: '0.5rem' }}>上报成功</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>感谢您的反馈，管理员会尽快核实处理。</p>
+      <main className="page" style={{ paddingTop: '3rem', textAlign: 'center', paddingBottom: '3rem' }}>
+        <div className="done-seal" aria-hidden="true">妥</div>
+        <h2 style={{ marginBottom: '0.5rem', letterSpacing: '0.12em' }}>上报成功</h2>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontFamily: 'var(--font-sans)' }}>感谢您的反馈，管理员会尽快核实处理。</p>
         <a href={`/point/${params.id}`} className="btn btn-primary">返回服务点</a>
       </main>
-    </>
+    </div>
   );
 
   return (
-    <>
+    <div className="slide">
       <nav className="navbar">
-        <a href={`/point/${params.id}`} className="btn btn-ghost btn-sm" aria-label="返回" style={{ padding: '0 0.5rem' }}>← 返回</a>
-        <span style={{ fontWeight: 600 }}>上报异常</span>
+        <a href={`/point/${params.id}`} className="btn btn-ghost btn-sm" aria-label="返回" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>← 返回</a>
+        <span className="navbar-title">上报异常</span>
       </nav>
 
-      <main className="page" style={{ paddingTop: '1.25rem' }}>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+      <main className="page" style={{ paddingTop: '1.25rem', paddingBottom: '2.5rem' }}>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>
           匿名上报，无需登录。信息仅用于核实和改善服务点质量。
         </p>
 
@@ -116,7 +116,7 @@ export default function ReportPage() {
               aria-invalid={!!contentErr}
             />
             {contentErr && (
-              <p id="content-err" className="field-error" role="alert">⚠ {contentErr}</p>
+              <p id="content-err" className="field-error" role="alert">※ {contentErr}</p>
             )}
             <p style={{ fontSize: '0.78rem', color: 'var(--text-faint)', marginTop: '0.25rem', textAlign: 'right' }}>
               {content.length}/500
@@ -125,7 +125,7 @@ export default function ReportPage() {
 
           {error && (
             <p className="field-error" role="alert" style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
-              ⚠ {error}
+              ※ {error}
             </p>
           )}
 
@@ -134,6 +134,6 @@ export default function ReportPage() {
           </button>
         </form>
       </main>
-    </>
+    </div>
   );
 }

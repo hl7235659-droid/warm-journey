@@ -4,11 +4,10 @@
   "description": "骑手服务点信息平台",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f9f6f2",
-  "theme_color": "#f9f6f2",
+  "background_color": "#F5EEDF",
+  "theme_color": "#8C1F28",
   "orientation": "portrait",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/images/logo-mark.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
   ]
 }

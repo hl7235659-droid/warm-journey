@@ -42,7 +42,11 @@ export default function LoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: '1rem' }}>
       <div className="card" style={{ width: '100%', maxWidth: '360px' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-          <p style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>🧡</p>
+          <img
+            src="/images/logo-mark.png"
+            alt=""
+            style={{ width: '76px', height: '76px', objectFit: 'contain', margin: '0 auto 0.5rem', display: 'block' }}
+          />
           <h1 style={{ margin: 0, fontSize: '1.3rem' }}>暖途同行管理端</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>请登录您的管理账号</p>
         </div>

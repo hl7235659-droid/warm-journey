@@ -34,3 +34,7 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# agent / artifacts
+.workbuddy-ai/
+/warm-journey-deploy.tar.gz

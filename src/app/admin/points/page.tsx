@@ -46,7 +46,7 @@ export default function AdminPointsPage() {
           onChange={e => { setQ(e.target.value); setPage(1); }} />
         <select className="select" value={status}
           onChange={e => { setStatus(e.target.value); setPage(1); }}
-          style={{ flex: '0 0 auto' }}>
+          style={{ flex: '0 0 auto', width: 'auto' }}>
           <option value="">全部状态</option>
           <option value="open">开放中</option>
           <option value="closed">已关闭</option>

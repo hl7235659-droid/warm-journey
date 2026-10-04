@@ -101,7 +101,7 @@ export default function AdminPointEditPage() {
               <label htmlFor="address">地址 *</label>
               <input id="address" className="input" required value={form.address ?? ''} onChange={e => set('address', e.target.value)} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
               <div>
                 <label htmlFor="lat">纬度</label>
                 <input id="lat" className="input" type="number" step="0.000001"

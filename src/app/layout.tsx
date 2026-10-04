@@ -21,8 +21,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f9f6f2' },
-    { media: '(prefers-color-scheme: dark)',  color: '#242018' },
+    { media: '(prefers-color-scheme: light)', color: '#6b4e22' },
+    { media: '(prefers-color-scheme: dark)',  color: '#1a120b' },
   ],
 };
 
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <head>
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/images/logo-mark.png" type="image/png" />
       </head>
       <body>{children}</body>
     </html>

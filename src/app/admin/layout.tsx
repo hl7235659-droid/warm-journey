@@ -1,7 +1,7 @@
 'use client';
 export const runtime = 'edge';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { type Admin, AdminCtx } from './admin-context';
 
@@ -12,11 +12,21 @@ const NAV = [
   { href: '/admin/inspections', label: '巡检',     icon: '🔍' },
 ];
 
+const COLLAPSE_KEY = 'wj_admin_sidebar_collapsed';
+const MOBILE_QUERY = '(max-width: 900px)';
+
+function isMobile() {
+  return typeof window !== 'undefined' && window.matchMedia(MOBILE_QUERY).matches;
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [ready, setReady] = useState(false);
+  // Desktop: 侧边栏是否收成图标条；Mobile: 抽屉是否打开
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (pathname === '/admin/login') { setReady(true); return; }
@@ -28,6 +38,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }).catch(() => router.replace('/admin/login')).finally(() => setReady(true));
   }, [pathname, router]);
 
+  // 恢复桌面端折叠偏好
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  // 切换路由时关闭移动端抽屉
+  useEffect(() => { setDrawerOpen(false); }, [pathname]);
+
+  // Esc 关闭抽屉
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  const toggleNav = useCallback(() => {
+    if (isMobile()) {
+      setDrawerOpen(v => !v);
+      return;
+    }
+    setCollapsed(v => {
+      const next = !v;
+      try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   async function logout() {
     await fetch('/api/admin/auth', { method: 'DELETE' });
     router.replace('/admin/login');
@@ -36,54 +76,81 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!ready) return null;
   if (pathname === '/admin/login') return <>{children}</>;
 
+  const navToggleLabel = isMobile()
+    ? (drawerOpen ? '关闭菜单' : '打开菜单')
+    : (collapsed ? '展开侧边栏' : '收起侧边栏');
+
   return (
     <AdminCtx.Provider value={admin}>
-      <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+      <div className="admin-shell">
         {/* Top bar */}
         <header style={{
-          position: 'sticky', top: 0, zIndex: 30,
+          position: 'sticky', top: 0, zIndex: 50,
           background: 'var(--surface)', borderBottom: '1px solid var(--border)',
           height: '52px', display: 'flex', alignItems: 'center', padding: '0 1rem', gap: '0.75rem',
         }}>
+          <button
+            type="button"
+            className="admin-icon-btn admin-drawer-btn"
+            onClick={toggleNav}
+            aria-label="打开菜单"
+            aria-expanded={drawerOpen}
+            aria-controls="admin-sidebar"
+          >☰</button>
+
+          <button
+            type="button"
+            className="admin-icon-btn admin-collapse-btn"
+            onClick={toggleNav}
+            aria-label={navToggleLabel}
+            title={navToggleLabel}
+            aria-expanded={!collapsed}
+            aria-controls="admin-sidebar"
+          >{collapsed ? '»' : '«'}</button>
+
           <span style={{ fontSize: '1.1rem' }}>🧡</span>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', flex: 1 }}>暖途同行 · 管理端</span>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            暖途同行 · 管理端
+          </span>
           {admin && (
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{admin.username}</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', flexShrink: 0 }}>{admin.username}</span>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={logout} style={{ fontSize: '0.8rem' }}>退出</button>
+          <button className="btn btn-ghost btn-sm" onClick={logout} style={{ fontSize: '0.8rem', flexShrink: 0 }}>退出</button>
         </header>
 
-        <div style={{ display: 'flex', flex: 1 }}>
+        <div className="admin-body">
           {/* Sidebar */}
-          <nav style={{
-            width: '180px', flexShrink: 0,
-            borderRight: '1px solid var(--border)',
-            background: 'var(--surface)',
-            padding: '0.75rem 0.5rem',
-            display: 'flex', flexDirection: 'column', gap: '2px',
-          }}>
+          <nav
+            id="admin-sidebar"
+            className={[
+              'admin-sidebar',
+              collapsed ? 'is-collapsed' : '',
+              drawerOpen ? 'is-open' : '',
+            ].filter(Boolean).join(' ')}
+            aria-label="管理端导航"
+          >
             {NAV.map(n => {
               const active = pathname.startsWith(n.href);
               return (
                 <a
                   key={n.href} href={n.href}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.5rem 0.75rem', borderRadius: 'var(--r-md)',
-                    textDecoration: 'none', fontSize: '0.875rem', fontWeight: active ? 600 : 400,
-                    background: active ? 'oklch(from var(--accent) l c h / .1)' : 'transparent',
-                    color: active ? 'var(--accent)' : 'var(--text-body)',
-                  }}
+                  className={`admin-nav-item${active ? ' is-active' : ''}`}
+                  title={collapsed && !isMobile() ? n.label : undefined}
                   aria-current={active ? 'page' : undefined}
                 >
-                  <span>{n.icon}</span>{n.label}
+                  <span className="admin-nav-icon" aria-hidden="true">{n.icon}</span>
+                  <span className="admin-nav-label">{n.label}</span>
                 </a>
               );
             })}
           </nav>
 
+          {drawerOpen && (
+            <div className="admin-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
+          )}
+
           {/* Main content */}
-          <main style={{ flex: 1, overflow: 'auto', padding: '1.5rem', background: 'var(--bg)' }}>
+          <main className="admin-main">
             {children}
           </main>
         </div>

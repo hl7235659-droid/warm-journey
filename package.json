@@ -6,11 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "pages:build": "npx vercel build && npx @cloudflare/next-on-pages --skip-build",
-    "pages:deploy": "npx wrangler pages deploy .vercel/output/static",
+    "pages:build": "node scripts/build-pages.cjs",
+    "pages:deploy": "npx wrangler pages deploy .vercel/output/static --project-name=warm-journey --branch=nuanru",
     "db:migrate": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/schema.sql",
-    "db:migrate:prod": "wrangler d1 execute warm-journey-db --file=src/lib/db/schema.sql",
-    "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql"
+    "db:migrate:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/schema.sql",
+    "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql",
+    "db:seed:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/seed.sql"
   },
   "dependencies": {
     "next": "15.3.5",
