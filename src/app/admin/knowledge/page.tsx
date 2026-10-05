@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useCanWrite } from '../admin-context';
+import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
+import type { ListResp } from '@/components/admin/list';
 import type { AiKnowledge } from '@/lib/db';
 import { api, ACTION_ERR } from '@/lib/api-client';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import type { KnowledgeCategory } from '@/lib/types';
 
-const CATEGORIES: Record<KnowledgeCategory, string> = {
+type CategoryKey = KnowledgeCategory;
+const CATEGORY_LABELS: Record<CategoryKey, string> = {
   rights: '权益政策', channel: '求助渠道', faq: '常见问题', notice: '平台公告',
 };
-type CategoryKey = KnowledgeCategory;
-const CATEGORY_KEYS: readonly CategoryKey[] = KNOWLEDGE_CATEGORIES;
 const CATEGORY_BADGE: Record<CategoryKey, string> = {
   rights: 'badge-blue', channel: 'badge-green', faq: 'badge-amber', notice: 'badge-gray',
 };
@@ -36,9 +37,6 @@ function fmtDate(ts: number) {
 
 export default function AdminKnowledgePage() {
   const canWrite = useCanWrite();
-  const [items, setItems] = useState<AiKnowledge[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<CategoryKey | ''>('');
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState('');
@@ -46,30 +44,29 @@ export default function AdminKnowledgePage() {
   const [editing, setEditing] = useState<AiKnowledge | null>(null);
   const [form, setForm] = useState({ category: 'faq' as CategoryKey, title: '', content: '', tags: '' });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const p = new URLSearchParams({ page: '1', page_size: '50' });
+  const fetchKnowledge = useCallback(async (page: number): Promise<ListResp<AiKnowledge>> => {
+    const p = new URLSearchParams({ page: String(page), page_size: '50' });
     if (category) p.set('category', category);
     if (q) p.set('q', q);
     const j = await api<{ items: AiKnowledge[]; total: number }>(`/api/admin/knowledge?${p}`);
-    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    setLoading(false);
+    if (!j.ok) return { ok: false, error: j.error };
+    return { ok: true, data: j.data.items, total: j.data.total };
   }, [category, q]);
 
-  useEffect(() => { void load(); }, [load]);
+  const { items, total, page, loading, error, reload } = useAdminList(fetchKnowledge);
 
   function openCreate() {
     setEditing(null);
-    setError('');
+    setFormError('');
     setForm({ category: category || 'faq', title: '', content: '', tags: '' });
     setShowForm(true);
   }
 
   function openEdit(it: AiKnowledge) {
     setEditing(it);
-    setError('');
+    setFormError('');
     setForm({ category: it.category, title: it.title, content: it.content, tags: it.tags.join(', ') });
     setShowForm(true);
   }
@@ -77,15 +74,15 @@ export default function AdminKnowledgePage() {
   function closeForm() {
     setShowForm(false);
     setEditing(null);
-    setError('');
+    setFormError('');
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title.trim()) { setError('标题不能为空'); return; }
-    if (!form.content.trim()) { setError('正文不能为空'); return; }
+    if (!form.title.trim()) { setFormError('标题不能为空'); return; }
+    if (!form.content.trim()) { setFormError('正文不能为空'); return; }
     setSaving(true);
-    setError('');
+    setFormError('');
     const j = await api(editing ? `/api/admin/knowledge/${editing.id}` : '/api/admin/knowledge', {
       method: editing ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -97,8 +94,8 @@ export default function AdminKnowledgePage() {
       }),
     });
     setSaving(false);
-    if (j.ok) { closeForm(); void load(); }
-    else { const msg = j.error ?? '保存失败'; setError(msg); alert(msg); }
+    if (j.ok) { closeForm(); reload(); }
+    else { const msg = j.error ?? '保存失败'; setFormError(msg); alert(msg); }
   }
 
   async function toggleEnabled(it: AiKnowledge) {
@@ -107,34 +104,34 @@ export default function AdminKnowledgePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: !it.enabled }),
     });
-    if (j.ok) void load();
+    if (j.ok) reload();
     else alert(j.error ?? ACTION_ERR);
   }
 
   async function remove(it: AiKnowledge) {
     if (!window.confirm(`确定删除「${it.title}」？此操作不可恢复。`)) return;
     const j = await api(`/api/admin/knowledge/${it.id}`, { method: 'DELETE' });
-    if (j.ok) void load();
+    if (j.ok) reload();
     else alert(j.error ?? '删除失败');
   }
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>AI 知识库</h1>
+      <div className="page-head">
+        <h1 className="page-title">AI 知识库</h1>
         {canWrite && <button className="btn btn-primary btn-sm" onClick={openCreate}>+ 新增条目</button>}
       </div>
 
-      <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+      <p className="hint">
         维护 AI 助手小暖的业务知识条目（权益政策 / 求助渠道 / 常见问题 / 平台公告），启用条目会被检索引用并附出处。
       </p>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.625rem', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+      <div className="field" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.625rem' }}>
+        <div className="flow-row">
           <button className={`btn btn-sm ${category === '' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCategory('')}>全部</button>
-          {CATEGORY_KEYS.map(k => (
+          {KNOWLEDGE_CATEGORIES.map(k => (
             <button key={k} className={`btn btn-sm ${category === k ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCategory(k)}>
-              {CATEGORIES[k]}
+              {CATEGORY_LABELS[k]}
             </button>
           ))}
         </div>
@@ -156,62 +153,52 @@ export default function AdminKnowledgePage() {
         </form>
       </div>
 
+      {error && <p className="field-error form-error">{error}</p>}
+
       <div className="table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+        <table>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-              {['类别', '标题', '标签', '状态', '更新时间', '操作'].map(h => (
-                <th key={h} style={{ padding: '0.625rem 0.75rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
+            <tr>
+              {['类别', '标题', '标签', '状态', '更新时间', '操作'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
-            {loading ? [1,2,3].map(i => (
-              <tr key={i}>{[1,2,3,4,5,6].map(j => (
-                <td key={j} style={{ padding: '0.75rem' }}><div className="skeleton" style={{ height: '16px', borderRadius: '4px' }} /></td>
-              ))}</tr>
-            )) : items.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                {q ? '没有匹配的条目' : '暂无知识条目，点击右上角新增'}
-              </td></tr>
+            {loading ? <SkeletonRows cols={6} /> : items.length === 0 ? (
+              <EmptyRow cols={6} text={q ? '没有匹配的条目' : '暂无知识条目，点击右上角新增'} />
             ) : items.map(it => (
-              <tr key={it.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  <span className={`badge ${CATEGORY_BADGE[it.category] ?? 'badge-gray'}`}>{CATEGORIES[it.category] ?? it.category}</span>
+              <tr key={it.id}>
+                <td className="td-nowrap">
+                  <span className={`badge ${CATEGORY_BADGE[it.category] ?? 'badge-gray'}`}>{CATEGORY_LABELS[it.category] ?? it.category}</span>
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem', maxWidth: '360px' }}>
+                <td style={{ maxWidth: '360px' }}>
                   <div style={{ fontWeight: 500 }}>{it.title}</div>
-                  <div style={{ color: 'var(--text-faint)', fontSize: '0.78rem', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ color: 'var(--text-faint)', fontSize: '0.78rem', marginTop: '0.15rem' }} className="ellipsis">
                     {it.content}
                   </div>
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem' }}>
+                <td>
                   {it.tags.length === 0 ? (
                     <span style={{ color: 'var(--text-faint)', fontSize: '0.8rem' }}>—</span>
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center' }}>
                       {it.tags.slice(0, 5).map(t => <span key={t} className="tag">{t}</span>)}
-                      {it.tags.length > 5 && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>+{it.tags.length - 5}</span>
-                      )}
+                      {it.tags.length > 5 && <span className="faint-xs">+{it.tags.length - 5}</span>}
                     </div>
                   )}
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem' }}>
+                <td>
                   <span className={`badge ${it.enabled ? 'badge-green' : 'badge-gray'}`}>{it.enabled ? '启用' : '停用'}</span>
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                  {fmtDate(it.updated_at)}
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-          {canWrite && (
-            <>
-              <button className="btn btn-ghost btn-sm" onClick={() => openEdit(it)}>编辑</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(it)}>{it.enabled ? '停用' : '启用'}</button>
-              <button className="btn btn-danger btn-sm" onClick={() => remove(it)}>删除</button>
-            </>
-          )}
+                <td className="td-time">{fmtDate(it.updated_at)}</td>
+                <td className="td-nowrap">
+                  <div className="flow-row" style={{ gap: '0.25rem' }}>
+                    {canWrite && (
+                      <>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openEdit(it)}>编辑</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(it)}>{it.enabled ? '停用' : '启用'}</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => remove(it)}>删除</button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -221,15 +208,15 @@ export default function AdminKnowledgePage() {
       </div>
 
       <p style={{ fontSize: '0.78rem', color: 'var(--text-faint)', marginTop: '0.75rem' }}>
-        共 {total} 条{category ? `（${CATEGORIES[category]}）` : ''}{q ? `，关键词「${q}」` : ''}
+        共 {total} 条{category ? `（${CATEGORY_LABELS[category]}）` : ''}{q ? `，关键词「${q}」` : ''}
       </p>
 
       {showForm && (
         <div className="modal-backdrop" onClick={closeForm}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
-            <h2 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>{editing ? '编辑知识条目' : '新增知识条目'}</h2>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">{editing ? '编辑知识条目' : '新增知识条目'}</h2>
             <form onSubmit={submit} noValidate>
-              <div style={{ marginBottom: '1rem' }}>
+              <div className="field">
                 <label htmlFor="k-category">类别 *</label>
                 <select
                   id="k-category"
@@ -237,10 +224,10 @@ export default function AdminKnowledgePage() {
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value as CategoryKey }))}
                 >
-                  {CATEGORY_KEYS.map(k => <option key={k} value={k}>{CATEGORIES[k]}</option>)}
+                  {KNOWLEDGE_CATEGORIES.map(k => <option key={k} value={k}>{CATEGORY_LABELS[k]}</option>)}
                 </select>
               </div>
-              <div style={{ marginBottom: '1rem' }}>
+              <div className="field">
                 <label htmlFor="k-title">标题 *（≤60 字）</label>
                 <input
                   id="k-title"
@@ -252,7 +239,7 @@ export default function AdminKnowledgePage() {
                   required
                 />
               </div>
-              <div style={{ marginBottom: '1rem' }}>
+              <div className="field">
                 <label htmlFor="k-content">正文 *（≤2000 字）</label>
                 <textarea
                   id="k-content"
@@ -265,7 +252,7 @@ export default function AdminKnowledgePage() {
                   required
                 />
               </div>
-              <div style={{ marginBottom: '1.25rem' }}>
+              <div className="field-lg">
                 <label htmlFor="k-tags">标签（逗号分隔，最多 10 个，单个 ≤20 字）</label>
                 <input
                   id="k-tags"
@@ -275,8 +262,8 @@ export default function AdminKnowledgePage() {
                   placeholder="例：高温补贴, 权益政策"
                 />
               </div>
-              {error && <p className="field-error" role="alert" style={{ marginBottom: '1rem' }}>⚠ {error}</p>}
-              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end' }}>
+              {formError && <p className="field-error form-error" role="alert">⚠ {formError}</p>}
+              <div className="modal-actions">
                 <button type="button" className="btn btn-ghost" onClick={closeForm}>取消</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? '保存中…' : editing ? '保存' : '创建'}
