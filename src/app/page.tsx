@@ -3,7 +3,7 @@ export const runtime = 'edge';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ServicePoint } from '@/lib/types';
-import { STATUS_LABELS } from '@/lib/types';
+import { STATUS_LABELS, SERVICE_TAGS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { Branch, Corners, Swoosh } from '@/components/ornaments';
 
@@ -43,7 +43,10 @@ function CountUp({ value }: { value: number }) {
   return <>{display}</>;
 }
 
-function PointCard({ point, userLat, userLng, idx }: { point: ServicePoint; userLat: number | null; userLng: number | null; idx: number }) {
+function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
+  point: ServicePoint; userLat: number | null; userLng: number | null; idx: number;
+  fav: boolean; onToggleFav: (id: string) => void;
+}) {
   const dist = (userLat && userLng) ? haversine(userLat, userLng, point.lat, point.lng) : null;
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
   const isPhoto = POINT_COVERS[point.id] !== undefined;
@@ -51,8 +54,20 @@ function PointCard({ point, userLat, userLng, idx }: { point: ServicePoint; user
 
   return (
     <a href={`/point/${point.id}`} className="card point-card reveal"
-       style={{ animationDelay: `${delay}ms` }}
+       style={{ animationDelay: `${delay}ms`, position: 'relative' }}
        aria-label={`${point.name}，${STATUS_LABELS[point.status]}`}>
+      <button
+        type="button"
+        aria-label={fav ? '取消收藏' : '收藏该站点'}
+        aria-pressed={fav}
+        onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleFav(point.id); }}
+        style={{
+          position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 2,
+          width: '34px', height: '34px', borderRadius: '50%', border: '1px solid var(--border)',
+          background: 'oklch(from var(--surface) l c h / .88)', cursor: 'pointer',
+          fontSize: '1rem', lineHeight: 1, color: fav ? 'var(--red-800)' : 'var(--text-faint)',
+        }}
+      >{fav ? '♥' : '♡'}</button>
       <div className="point-cover">
         <img src={cover} alt={isPhoto ? `${point.name} 实景` : `${point.name} 插画示意`} loading="lazy" />
         <span className={`seal ${STATUS_SEALS[point.status]} cover-badge anim-stamp`}
@@ -80,6 +95,8 @@ function PointCard({ point, userLat, userLng, idx }: { point: ServicePoint; user
   );
 }
 
+const FAVS_KEY = 'wj_favs';
+
 export default function HomePage() {
   const [points, setPoints] = useState<ServicePoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +106,46 @@ export default function HomePage() {
   const [userLng, setUserLng] = useState<number | null>(null);
   const [geoError, setGeoError] = useState('');
   const [total, setTotal] = useState(0);
+  const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
+  const [cityFilter, setCityFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [favs, setFavs] = useState<string[]>([]);
+  const [favOnly, setFavOnly] = useState(false);
+
+  // 已开通城市
+  useEffect(() => {
+    fetch('/api/cities')
+      .then(r => r.json() as Promise<{ ok: boolean; data?: { id: string; name: string }[] }>)
+      .then(j => { if (j.ok && j.data) setCities(j.data); })
+      .catch(() => { /* 城市列表失败不阻塞主流程 */ });
+  }, []);
+
+  // URL 参数初值（AI filter action 落点：/?city=广州&service=充电）
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const city = sp.get('city');
+      const service = sp.get('service');
+      if (city) setCityFilter(city);
+      if (service) setServiceFilter(service);
+    } catch { /* ignore */ }
+  }, []);
+
+  // 收藏（localStorage）
+  useEffect(() => {
+    try {
+      const list = JSON.parse(localStorage.getItem(FAVS_KEY) ?? '[]') as string[];
+      setFavs(list);
+    } catch { /* ignore */ }
+  }, []);
+
+  function toggleFav(id: string) {
+    setFavs(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      try { localStorage.setItem(FAVS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   const fetchPoints = useCallback(async () => {
     setLoading(true);
@@ -96,6 +153,8 @@ export default function HomePage() {
       const params = new URLSearchParams();
       if (q) params.set('q', q);
       if (statusFilter) params.set('status', statusFilter);
+      if (cityFilter) params.set('city', cityFilter);
+      if (serviceFilter) params.set('service', serviceFilter);
       params.set('page_size', '50');
       const res = await fetch(`/api/points?${params}`);
       const json = await res.json() as { ok: boolean; data?: { items: ServicePoint[]; total: number } };
@@ -112,7 +171,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [q, statusFilter, userLat, userLng]);
+  }, [q, statusFilter, cityFilter, serviceFilter, userLat, userLng]);
 
   useEffect(() => { void fetchPoints(); }, [fetchPoints]);
 
@@ -146,6 +205,8 @@ export default function HomePage() {
     const serviceTypes = new Set(points.flatMap(p => p.services)).size;
     return { openCount, serviceTypes };
   }, [points]);
+
+  const visiblePoints = favOnly ? points.filter(p => favs.includes(p.id)) : points;
 
   return (
     <div className="slide">
@@ -203,6 +264,26 @@ export default function HomePage() {
       <div className="slide-body">
         {/* 检索匣 */}
         <div className="panel-frame anim-rise" style={{ animationDelay: '200ms' }}>
+          {cities.length > 1 && (
+            <div className="panel-row">
+              <span className="brush-label">城市</span>
+              <div className="toolbar-chips" role="group" aria-label="城市筛选">
+                <button
+                  onClick={() => setCityFilter('')}
+                  className={`tab${cityFilter === '' ? ' is-active' : ''}`}
+                  aria-pressed={cityFilter === ''}
+                >全部</button>
+                {cities.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => setCityFilter(c.name)}
+                    className={`tab${cityFilter === c.name ? ' is-active' : ''}`}
+                    aria-pressed={cityFilter === c.name}
+                  >{c.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="panel-row">
             <span className="brush-label">筛选</span>
             <div className="toolbar-chips" role="group" aria-label="状态筛选">
@@ -215,6 +296,29 @@ export default function HomePage() {
                 >
                   {{ '': '全部', open: '开放中', closed: '已关闭', temp_closed: '临时关闭' }[s]}
                 </button>
+              ))}
+              <button
+                onClick={() => setFavOnly(v => !v)}
+                className={`tab${favOnly ? ' is-active' : ''}`}
+                aria-pressed={favOnly}
+              >♥ 已收藏</button>
+            </div>
+          </div>
+          <div className="panel-row">
+            <span className="brush-label">服务</span>
+            <div className="toolbar-chips" role="group" aria-label="服务筛选">
+              <button
+                onClick={() => setServiceFilter('')}
+                className={`tab${serviceFilter === '' ? ' is-active' : ''}`}
+                aria-pressed={serviceFilter === ''}
+              >全部</button>
+              {SERVICE_TAGS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setServiceFilter(cur => (cur === s ? '' : s))}
+                  className={`tab${serviceFilter === s ? ' is-active' : ''}`}
+                  aria-pressed={serviceFilter === s}
+                >{s}</button>
               ))}
             </div>
           </div>
@@ -257,19 +361,20 @@ export default function HomePage() {
               <div key={i} className="skeleton" style={{ height: '280px', borderRadius: 'var(--r-lg)' }} />
             ))}
           </div>
-        ) : points.length === 0 ? (
+        ) : visiblePoints.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
             <p style={{ fontSize: 0, margin: 0 }}>
               <span className="seal seal-ink" style={{ fontSize: '0.95rem', padding: '0.5rem 1.1rem' }}>暂 无 结 果</span>
             </p>
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.88rem', marginTop: '0.75rem' }}>
-              没有找到符合条件的服务点
+              {favOnly ? '还没有收藏任何站点，点卡片右上角 ♡ 收藏' : '没有找到符合条件的服务点'}
             </p>
           </div>
         ) : (
           <div className="stack">
-            {points.map((p, i) => (
-              <PointCard key={p.id} point={p} userLat={userLat} userLng={userLng} idx={i} />
+            {visiblePoints.map((p, i) => (
+              <PointCard key={p.id} point={p} userLat={userLat} userLng={userLng} idx={i}
+                fav={favs.includes(p.id)} onToggleFav={toggleFav} />
             ))}
           </div>
         )}
@@ -281,6 +386,9 @@ export default function HomePage() {
         <Branch flip />
         <b>暖途同行</b>
         <span>温暖骑手的每一程旅途</span>
+        <a href="/report-status" style={{ color: 'var(--gold-300)', fontSize: '0.82rem', fontFamily: 'var(--font-sans)' }}>
+          上报进度查询
+        </a>
       </footer>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 export const runtime = 'edge';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { REPORT_CATEGORY_LABELS } from '@/lib/types';
 import type { ReportCategory } from '@/lib/types';
@@ -16,7 +16,41 @@ export default function ReportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [queryCode, setQueryCode] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
+  const [images, setImages] = useState<{ key: string; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  // AI 带路预填：?category=facility 等（白名单校验）
+  useEffect(() => {
+    const c = new URLSearchParams(window.location.search).get('category');
+    if (c && c in REPORT_CATEGORY_LABELS) setCategory(c as ReportCategory);
+  }, []);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    if (images.length + files.length > 3) { setError('最多上传 3 张图片'); return; }
+    setUploading(true);
+    setError('');
+    try {
+      for (const file of files) {
+        if (file.size > 5 * 1024 * 1024) { setError(`「${file.name}」超过 5MB，已跳过`); continue; }
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const json = await res.json() as { ok: boolean; error?: string; data?: { key: string; url: string } };
+        if (json.ok && json.data) setImages(prev => [...prev, json.data!]);
+        else setError(json.error ?? '图片上传失败');
+      }
+    } catch {
+      setError('图片上传失败，请稍后重试');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const contentErr = contentTouched && content.trim().length < 5 ? '请至少描述 5 个字' : '';
 
@@ -30,10 +64,20 @@ export default function ReportPage() {
       const res = await fetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ point_id: params.id, category, content: content.trim(), images: [] }),
+        body: JSON.stringify({ point_id: params.id, category, content: content.trim(), images: images.map(i => i.key) }),
       });
-      const json = await res.json() as { ok: boolean; error?: string };
+      const json = await res.json() as { ok: boolean; error?: string; data?: { report_id?: string } };
       if (!json.ok) { setError(json.error ?? '提交失败，请重试'); return; }
+      const code = json.data?.report_id ?? '';
+      setQueryCode(code);
+      if (code) {
+        try {
+          const key = 'wj_my_reports';
+          const list = JSON.parse(localStorage.getItem(key) ?? '[]') as { code: string; point_id: string; ts: number }[];
+          list.unshift({ code, point_id: params.id, ts: Date.now() });
+          localStorage.setItem(key, JSON.stringify(list.slice(0, 20)));
+        } catch { /* localStorage 不可用时静默跳过 */ }
+      }
       setDone(true);
     } catch {
       setError('网络异常，请稍后重试');
@@ -51,8 +95,32 @@ export default function ReportPage() {
       <main className="page" style={{ paddingTop: '3rem', textAlign: 'center', paddingBottom: '3rem' }}>
         <div className="done-seal" aria-hidden="true">妥</div>
         <h2 style={{ marginBottom: '0.5rem', letterSpacing: '0.12em' }}>上报成功</h2>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontFamily: 'var(--font-sans)' }}>感谢您的反馈，管理员会尽快核实处理。</p>
-        <a href={`/point/${params.id}`} className="btn btn-primary">返回服务点</a>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontFamily: 'var(--font-sans)' }}>感谢您的反馈，管理员会尽快核实处理。</p>
+        {queryCode && (
+          <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem' }}>
+            <p style={{ margin: '0 0 0.375rem', fontSize: '0.82rem', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+              查询码（凭它随时查看处理进度）
+            </p>
+            <p style={{ margin: '0 0 0.625rem', fontSize: '1.15rem', fontWeight: 700, letterSpacing: '0.14em', fontFamily: 'monospace', color: 'var(--red-800)' }}>
+              {queryCode}
+            </p>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                navigator.clipboard.writeText(queryCode).then(() => {
+                  setCodeCopied(true);
+                  setTimeout(() => setCodeCopied(false), 2000);
+                });
+              }}
+            >
+              {codeCopied ? '已复制' : '复制查询码'}
+            </button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'center' }}>
+          <a href={`/point/${params.id}`} className="btn btn-primary">返回服务点</a>
+          <a href="/report-status" className="btn btn-secondary">查询进度</a>
+        </div>
       </main>
     </div>
   );
@@ -123,14 +191,48 @@ export default function ReportPage() {
             </p>
           </div>
 
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label id="imgs-label">现场照片（可选，最多 3 张）</label>
+            <div aria-labelledby="imgs-label" style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+              {images.map((img, i) => (
+                <div key={img.key} style={{ position: 'relative', width: '72px', height: '72px' }}>
+                  <img src={img.url} alt={`已上传照片 ${i + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }} />
+                  <button
+                    type="button"
+                    aria-label="移除这张照片"
+                    onClick={() => setImages(prev => prev.filter(x => x.key !== img.key))}
+                    style={{
+                      position: 'absolute', top: '-6px', right: '-6px', width: '20px', height: '20px',
+                      borderRadius: '50%', border: 'none', background: 'var(--danger)', color: '#fff',
+                      fontSize: '12px', lineHeight: 1, cursor: 'pointer',
+                    }}
+                  >×</button>
+                </div>
+              ))}
+              {images.length < 3 && (
+                <label style={{
+                  width: '72px', height: '72px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '1.5px dashed var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                  color: 'var(--text-muted)', fontSize: '1.4rem',
+                }}>
+                  {uploading ? '…' : '+'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                    onChange={handleFileChange} disabled={uploading}
+                    style={{ display: 'none' }} aria-label="选择照片" />
+                </label>
+              )}
+            </div>
+          </div>
+
           {error && (
             <p className="field-error" role="alert" style={{ marginBottom: '1rem', fontSize: '0.9rem' }}>
               ※ {error}
             </p>
           )}
 
-          <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={submitting}>
-            {submitting ? '提交中…' : '提交上报'}
+          <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={submitting || uploading}>
+            {submitting ? '提交中…' : uploading ? '图片上传中…' : '提交上报'}
           </button>
         </form>
       </main>

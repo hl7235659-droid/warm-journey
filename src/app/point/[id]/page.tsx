@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { getPoint } from '@/lib/db';
+import { getPoint, getPointSignals, getOccupancy } from '@/lib/db';
 import type { ServicePoint } from '@/lib/types';
 import PointDetailClient from './PointDetailClient';
 
@@ -24,5 +24,9 @@ export default async function PointPage({ params }: Props) {
   const { env } = getRequestContext();
   const point = await getPoint(env.DB, id);
   if (!point) notFound();
-  return <PointDetailClient point={point as ServicePoint} />;
+  const [signals, occupancy] = await Promise.all([
+    getPointSignals(env.DB, id),
+    getOccupancy(env.DB, id),
+  ]);
+  return <PointDetailClient point={point as ServicePoint} signals={signals} occupancy={occupancy} />;
 }

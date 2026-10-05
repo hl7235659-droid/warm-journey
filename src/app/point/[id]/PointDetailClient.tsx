@@ -1,29 +1,50 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { Corners } from '@/components/ornaments';
+import type { PointSignals, Occupancy } from '@/lib/db';
+import { navToPoint } from '@/lib/nav';
+import VisitCard from './VisitCard';
 
-interface Props { point: ServicePoint }
+interface Props { point: ServicePoint; signals: PointSignals; occupancy: Occupancy }
 
-function navToPoint(lat: number, lng: number, name: string) {
-  const ua = navigator.userAgent;
-  const encoded = encodeURIComponent(name);
-  if (/iPhone|iPad|iPod/.test(ua)) {
-    window.location.href = `maps://maps.apple.com/?daddr=${lat},${lng}&q=${encoded}`;
-  } else {
-    window.open(`https://uri.amap.com/navigation?to=${lng},${lat},${encoded}&mode=walking&callnative=1`, '_blank');
-  }
-}
-
-export default function PointDetailClient({ point }: Props) {
+export default function PointDetailClient({ point, signals, occupancy }: Props) {
   const [copied, setCopied] = useState(false);
+  const [confirmCount, setConfirmCount] = useState(signals.confirm_count);
+  const [confirmed, setConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const statusClass = { open: 'seal-jade', closed: 'seal-ink', temp_closed: 'seal-gold' }[point.status];
   const updatedDate = new Date(point.updated_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
   const isPhoto = POINT_COVERS[point.id] !== undefined;
+
+  const CONFIRM_KEY = `wj_confirmed_${point.id}`;
+
+  // 本机已确认过则置灰，避免重复计数
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(CONFIRM_KEY)) setConfirmed(true);
+    } catch { /* ignore */ }
+  }, [CONFIRM_KEY]);
+
+  async function handleConfirm() {
+    if (confirmed || confirming) return;
+    setConfirming(true);
+    try {
+      const res = await fetch(`/api/points/${point.id}/confirm`, { method: 'POST' });
+      const json = await res.json() as { ok: boolean; data?: { confirm_count: number } };
+      if (json.ok && json.data) {
+        setConfirmCount(json.data.confirm_count);
+        setConfirmed(true);
+        try { localStorage.setItem(CONFIRM_KEY, '1'); } catch { /* ignore */ }
+      }
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   function copyAddress() {
     navigator.clipboard.writeText(point.address).then(() => {
@@ -95,7 +116,19 @@ export default function PointDetailClient({ point }: Props) {
           >
             上报
           </a>
+          <button
+            type="button"
+            className="btn btn-secondary btn-lg"
+            style={{ flexShrink: 0 }}
+            onClick={() => window.dispatchEvent(new CustomEvent('wj-ai-open', { detail: { pointId: point.id } }))}
+            aria-label="问小暖 AI 助手"
+          >
+            问小暖
+          </button>
         </div>
+
+        {/* 预约进店 + 在店人数 */}
+        <VisitCard pointId={point.id} pointStatus={point.status} initialOccupancy={occupancy} />
 
         {/* Services — 素读点分隔 */}
         {point.services.length > 0 && (
@@ -114,19 +147,61 @@ export default function PointDetailClient({ point }: Props) {
           </section>
         )}
 
+        {/* 实时信号：还能用吗 */}
+        <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '380ms' }}>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+            站点近况
+          </h2>
+          <div className="stack-sm">
+            {signals.pending_reports_30d > 0 ? (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="seal seal-gold" aria-hidden="true">警</span>
+                <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>
+                  近 30 天有 <strong>{signals.pending_reports_30d}</strong> 条异常上报待核实，前往前请留意
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="seal seal-jade" aria-hidden="true">安</span>
+                <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>近 30 天无待核实异常上报</span>
+              </div>
+            )}
+            {signals.last_inspection && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="mi-seal" aria-hidden="true"><i>检</i></span>
+                <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>
+                  最近巡检：{{ pass: '通过', fail: '未通过', partial: '部分通过' }[signals.last_inspection.result] ?? signals.last_inspection.result}
+                  （{new Date(signals.last_inspection.inspected_at * 1000).toLocaleDateString('zh-CN')}）
+                </span>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)', color: 'var(--text-muted)' }}>
+                {confirmCount > 0 ? `${confirmCount} 位骑手确认信息无误` : '还没有骑手确认过，等你来确认'}
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleConfirm}
+                disabled={confirmed || confirming}
+                aria-pressed={confirmed}
+              >
+                {confirmed ? '已确认 ✓' : confirming ? '提交中…' : '信息无误'}
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* Admission */}
-        {(point.admission.platform_required || point.admission.id_required || point.admission.capacity || point.admission.notes) && (
+        {(point.admission.id_required || point.admission.capacity || point.admission.notes) && (
           <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '400ms' }}>
             <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
               准入要求
             </h2>
             <div className="stack-sm">
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span className="mi-seal" aria-hidden="true"><i>平</i></span>
+                <span className="mi-seal" aria-hidden="true"><i>骑</i></span>
                 <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>
-                  {point.admission.platform_required
-                    ? <>仅限 <strong>{point.admission.platform_required}</strong> 骑手</>
-                    : '所有平台骑手均可进入'}
+                  所有骑手均可进入
                 </span>
               </div>
               {point.admission.id_required && (

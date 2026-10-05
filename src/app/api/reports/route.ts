@@ -1,5 +1,5 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { createReport, getPoint } from '@/lib/db';
+import { createReport, getPoint, maybeAutoCreateWorkOrder } from '@/lib/db';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -8,7 +8,8 @@ const ReportSchema = z.object({
   point_id: z.string().min(1),
   category: z.enum(['closed', 'info_wrong', 'facility', 'safety', 'other']),
   content:  z.string().min(5).max(500),
-  images:   z.array(z.string()).max(3).default([]),
+  // 只允许 /api/upload 签发的 key，防止任意注入
+  images:   z.array(z.string().regex(/^img\/\d{4}-\d{2}\/[0-9a-f]{16}\.(jpg|png|webp|gif)$/)).max(3).default([]),
 });
 
 export async function POST(req: Request) {
@@ -25,6 +26,13 @@ export async function POST(req: Request) {
   const point = await getPoint(env.DB, parsed.data.point_id);
   if (!point) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
 
-  await createReport(env.DB, parsed.data);
-  return Response.json({ ok: true, data: { message: '上报成功，感谢您的反馈' } }, { status: 201 });
+  const reportId = await createReport(env.DB, parsed.data);
+
+  // 同一点位待核实上报达到阈值 → 自动开工单并关联
+  const autoOrderId = await maybeAutoCreateWorkOrder(env.DB, parsed.data.point_id);
+
+  return Response.json({
+    ok: true,
+    data: { message: '上报成功，感谢您的反馈', report_id: reportId, auto_order_id: autoOrderId },
+  }, { status: 201 });
 }

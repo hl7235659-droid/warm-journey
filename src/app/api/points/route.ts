@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     city:      sp.get('city') ?? undefined,
     status:    sp.get('status') ?? undefined,
     q:         sp.get('q') ?? undefined,
+    service:   sp.get('service') ?? undefined,
     page:      Number(sp.get('page') ?? 1),
     page_size: Number(sp.get('page_size') ?? 20),
   });
