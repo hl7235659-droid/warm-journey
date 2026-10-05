@@ -1,34 +1,28 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import type { Report } from '@/lib/types';
-import { REPORT_CATEGORY_LABELS } from '@/lib/types';
+import { useCallback, useState } from 'react';
+import { EmptyRow, LIST_PAGE_SIZE, Pager, SkeletonRows, useAdminList } from '@/components/admin/list';
+import type { ListResp } from '@/components/admin/list';
+import type { PagedResult, Report } from '@/lib/types';
+import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS } from '@/lib/types';
 import { api } from '@/lib/api-client';
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待处理', processing: '处理中', resolved: '已解决', closed: '已关闭',
-};
-const STATUS_BADGE: Record<string, string> = {
+const STATUS_BADGE: Record<Report['status'], string> = {
   pending: 'badge-amber', processing: 'badge-blue', resolved: 'badge-green', closed: 'badge-red',
 };
 
 export default function AdminReportsPage() {
-  const [items, setItems] = useState<Report[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+  const fetchReports = useCallback(async (page: number): Promise<ListResp<Report>> => {
+    const p = new URLSearchParams({ page: String(page), page_size: String(LIST_PAGE_SIZE) });
     if (status) p.set('status', status);
-    const j = await api<{ items: Report[]; total: number }>(`/api/admin/reports?${p}`);
-    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    setLoading(false);
-  }, [page, status]);
+    const j = await api<PagedResult<Report>>(`/api/admin/reports?${p}`);
+    if (!j.ok) return { ok: false, error: j.error };
+    return { ok: true, data: j.data.items, total: j.data.total };
+  }, [status]);
 
-  useEffect(() => { void load(); }, [load]);
+  const { items, page, totalPages, loading, error, setPage, reload } = useAdminList(fetchReports);
 
   async function createWorkOrder(reportId: string) {
     // API 入参是 report_id（此前误传 source_report_id，zod 静默丢弃导致工单永远关联不上上报）
@@ -37,88 +31,69 @@ export default function AdminReportsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '处理上报', report_id: reportId, priority: 'normal' }),
     });
-    if (j.ok) { alert('工单已创建'); void load(); }
+    if (j.ok) { alert('工单已创建'); reload(); }
     else alert(j.error ?? '创建失败');
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / 20));
-
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>上报管理</h1>
-        <select className="select" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} style={{ width: 'auto' }}>
+      <div className="page-head">
+        <h1 className="page-title">上报管理</h1>
+        <select className="select" value={status}
+          onChange={e => { setStatus(e.target.value); setPage(1); }}
+          style={{ width: 'auto' }}>
           <option value="">全部状态</option>
-          <option value="pending">待处理</option>
-          <option value="processing">处理中</option>
-          <option value="resolved">已解决</option>
-          <option value="closed">已关闭</option>
+          {(Object.keys(REPORT_STATUS_LABELS) as Report['status'][]).map(s => (
+            <option key={s} value={s}>{REPORT_STATUS_LABELS[s]}</option>
+          ))}
         </select>
       </div>
 
+      {error && <p className="field-error form-error">{error}</p>}
+
       <div className="table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+        <table>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-              {['服务点', '问题类型', '描述', '状态', '时间', '操作'].map(h => (
-                <th key={h} style={{ padding: '0.625rem 0.75rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
+            <tr>
+              {['服务点', '问题类型', '描述', '状态', '时间', '操作'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
-            {loading ? [1,2,3].map(i => (
-              <tr key={i}>{[1,2,3,4,5,6].map(j => (
-                <td key={j} style={{ padding: '0.75rem' }}><div className="skeleton" style={{ height: '16px', borderRadius: '4px' }} /></td>
-              ))}</tr>
-            )) : items.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>暂无上报</td></tr>
-            ) : items.map(r => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.625rem 0.75rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                  <a href={`/admin/points/${r.point_id}`} style={{ textDecoration: 'none', color: 'inherit', fontSize: '0.82rem' }}>
-                    {r.point_name ?? r.point_id.slice(0, 8) + '…'}
-                  </a>
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  {REPORT_CATEGORY_LABELS[r.category] ?? r.category}
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '240px' }}>
-                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.content}</div>
-                  {r.images.length > 0 && (
-                    <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.375rem' }}>
-                      {r.images.map(key => (
-                        <a key={key} href={`/api/images/${key}`} target="_blank" rel="noreferrer">
-                          <img src={`/api/images/${key}`} alt="上报照片"
-                            style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem' }}>
-                  <span className={`badge ${STATUS_BADGE[r.status] ?? ''}`}>{STATUS_LABELS[r.status] ?? r.status}</span>
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
-                  {new Date(r.created_at * 1000).toLocaleDateString('zh-CN')}
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  {r.status === 'pending' && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => createWorkOrder(r.id)}>建工单</button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {loading ? <SkeletonRows cols={6} /> : items.length === 0 ? <EmptyRow cols={6} text="暂无上报" /> :
+              items.map(r => (
+                <tr key={r.id}>
+                  <td className="td-name">
+                    <a href={`/admin/points/${r.point_id}`} className="cell-link td-meta">
+                      {r.point_name ?? r.point_id.slice(0, 8) + '…'}
+                    </a>
+                  </td>
+                  <td className="td-nowrap">{REPORT_CATEGORY_LABELS[r.category] ?? r.category}</td>
+                  <td className="td-muted" style={{ maxWidth: '240px' }}>
+                    <div className="ellipsis">{r.content}</div>
+                    {r.images.length > 0 && (
+                      <div className="flow-row" style={{ marginTop: '0.375rem' }}>
+                        {r.images.map(key => (
+                          <a key={key} href={`/api/images/${key}`} target="_blank" rel="noreferrer">
+                            <img src={`/api/images/${key}`} alt="上报照片" className="thumb" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td><span className={`badge ${STATUS_BADGE[r.status]}`}>{REPORT_STATUS_LABELS[r.status]}</span></td>
+                  <td className="td-time">{new Date(r.created_at * 1000).toLocaleDateString('zh-CN')}</td>
+                  <td className="td-nowrap">
+                    {r.status === 'pending' && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => createWorkOrder(r.id)}>建工单</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
 
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← 上一页</button>
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{page} / {totalPages}</span>
-          <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一页 →</button>
-        </div>
-      )}
+      <Pager page={page} totalPages={totalPages} onPage={setPage} />
     </>
   );
 }
