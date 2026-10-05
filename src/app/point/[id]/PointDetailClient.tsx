@@ -198,7 +198,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
               </button>
             </div>
             {confirmError && (
-              <p style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: 'var(--cinnabar)', fontFamily: 'var(--font-sans)' }}>
+              <p style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: 'var(--danger)', fontFamily: 'var(--font-sans)' }}>
                 {confirmError}
               </p>
             )}

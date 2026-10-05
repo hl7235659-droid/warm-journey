@@ -21,9 +21,9 @@ export default function PointHistoryPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div className="editor-head">
         <button className="btn btn-ghost btn-sm" onClick={() => router.back()}>← 返回</button>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>变更历史</h1>
+        <h1 className="page-title">变更历史</h1>
       </div>
 
       {loading ? (
@@ -31,7 +31,7 @@ export default function PointHistoryPage() {
           {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '72px', borderRadius: 'var(--r-lg)' }} />)}
         </div>
       ) : history.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '3rem 0' }}>暂无变更记录</p>
+        <p className="empty-block" style={{ padding: '3rem 0' }}>暂无变更记录</p>
       ) : (
         <div style={{ position: 'relative', paddingLeft: '1.5rem' }}>
           {/* Timeline line */}
@@ -71,7 +71,7 @@ export default function PointHistoryPage() {
                     {open && (
                       <pre style={{
                         marginTop: '0.75rem', padding: '0.75rem',
-                        background: 'var(--n-50)', borderRadius: 'var(--r-md)',
+                        background: 'var(--paper)', borderRadius: 'var(--r-md)',
                         fontSize: '0.75rem', lineHeight: 1.6,
                         overflow: 'auto', maxHeight: '320px',
                         whiteSpace: 'pre-wrap', wordBreak: 'break-all',

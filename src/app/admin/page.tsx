@@ -38,8 +38,8 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>数据看板</h1>
+      <div className="page-head is-baseline">
+        <h1 className="page-title">数据看板</h1>
         {admin && (
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
             {admin.username} · {ROLE_LABELS[admin.role] ?? admin.role}
@@ -57,7 +57,7 @@ export default function AdminDashboard() {
             <div style={{
               fontSize: '1.75rem', fontWeight: 800, lineHeight: 1.1,
               color: c.tone === 'warn' && (c.value ?? 0) > 0 ? 'var(--danger)'
-                   : c.tone === 'ok' ? 'var(--jade, #2f7d5b)' : 'var(--text)',
+                   : c.tone === 'ok' ? 'var(--jade)' : 'var(--text-body)',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {loading ? '–' : (c.value ?? 0)}

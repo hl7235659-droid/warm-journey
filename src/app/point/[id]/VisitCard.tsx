@@ -140,7 +140,7 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
             <QrImage value={`${origin}/checkin/${visit.id}?c=${visit.checkin_code}`} size={180} label="入店二维码" />
           )}
           {origin && !visit.checkin_code && (
-            <p style={{ fontSize: '0.8rem', color: 'var(--cinnabar)', fontFamily: 'var(--font-sans)' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--danger)', fontFamily: 'var(--font-sans)' }}>
               入店码缺失，请点击「刷新状态」或重新预约
             </p>
           )}

@@ -49,7 +49,7 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
-          <div style={{ marginBottom: '1rem' }}>
+          <div className="field">
             <label htmlFor="username">用户名</label>
             <input
               id="username" className="input" type="text" autoComplete="username"
@@ -57,7 +57,7 @@ export default function LoginPage() {
               placeholder="admin" autoFocus required
             />
           </div>
-          <div style={{ marginBottom: '1.25rem' }}>
+          <div className="field-lg">
             <label htmlFor="password">密码</label>
             <input
               id="password" className="input" type="password" autoComplete="current-password"
@@ -65,7 +65,7 @@ export default function LoginPage() {
               placeholder="••••••••" required
             />
           </div>
-          {error && <p className="field-error" role="alert" style={{ marginBottom: '1rem' }}>⚠ {error}</p>}
+          {error && <p className="field-error form-error" role="alert">⚠ {error}</p>}
           <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={loading}>
             {loading ? '登录中…' : '登录'}
           </button>

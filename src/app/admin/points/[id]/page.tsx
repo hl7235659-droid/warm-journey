@@ -82,24 +82,22 @@ export default function AdminPointEditPage() {
   }
 
   if (loading) return (
-    <div className="stack" style={{ maxWidth: '640px' }}>
+    <div className="stack form-narrow">
       {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '56px', borderRadius: 'var(--r-lg)' }} />)}
     </div>
   );
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div className="editor-head">
         <button className="btn btn-ghost btn-sm" onClick={() => router.back()}>← 返回</button>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>{isNew ? '新增服务点' : '编辑服务点'}</h1>
+        <h1 className="page-title">{isNew ? '新增服务点' : '编辑服务点'}</h1>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate style={{ maxWidth: '640px' }}>
+      <form onSubmit={handleSubmit} noValidate className="stack form-narrow">
         {/* Basic info */}
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <h2 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            基本信息
-          </h2>
+        <div className="card">
+          <h2 className="panel-title">基本信息</h2>
           <div className="stack">
             <div>
               <label htmlFor="name">名称 *</label>
@@ -109,7 +107,7 @@ export default function AdminPointEditPage() {
               <label htmlFor="address">地址 *</label>
               <input id="address" className="input" required value={form.address ?? ''} onChange={e => set('address', e.target.value)} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
+            <div className="field-grid">
               <div>
                 <label htmlFor="lat">纬度</label>
                 <input id="lat" className="input" type="number" step="0.000001"
@@ -121,7 +119,7 @@ export default function AdminPointEditPage() {
                   value={form.lng ?? 0} onChange={e => set('lng', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
+            <div className="field-grid">
               <div>
                 <label htmlFor="city">城市</label>
                 <select id="city" className="select" value={form.city ?? ''} onChange={e => set('city', e.target.value)}>
@@ -162,11 +160,9 @@ export default function AdminPointEditPage() {
         </div>
 
         {/* Services */}
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            服务项目
-          </h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div className="card">
+          <h2 className="panel-title">服务项目</h2>
+          <div className="flow-row" style={{ gap: '0.5rem' }}>
             {SERVICE_TAGS.map(s => {
               const on = form.services?.includes(s) ?? false;
               return (
@@ -189,10 +185,8 @@ export default function AdminPointEditPage() {
         </div>
 
         {/* Admission */}
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            准入要求
-          </h2>
+        <div className="card">
+          <h2 className="panel-title">准入要求</h2>
           <div className="stack">
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
               <input type="checkbox"
@@ -219,27 +213,25 @@ export default function AdminPointEditPage() {
 
         {/* 直达二维码：打印张贴后骑手扫码直达详情页 / 离店 */}
         {!isNew && (
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              站内二维码（打印张贴）
-            </h2>
+          <div className="card">
+            <h2 className="panel-title">站内二维码（打印张贴）</h2>
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'center' }}>
+              <div className="qr-cell">
                 <img
                   src={`/api/admin/points/${id}/qr`}
                   alt={`${form.name ?? '服务点'} 详情页二维码`}
-                  style={{ width: '120px', height: '120px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: '#fff' }}
+                  className="qr-img"
                 />
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.375rem 0' }}>门口贴 · 直达详情页</p>
+                <p className="qr-caption">门口贴 · 直达详情页</p>
                 <a href={`/api/admin/points/${id}/qr`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
               </div>
-              <div style={{ textAlign: 'center' }}>
+              <div className="qr-cell">
                 <img
                   src={`/api/admin/points/${id}/qr?type=checkout`}
                   alt={`${form.name ?? '服务点'} 离店码`}
-                  style={{ width: '120px', height: '120px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: '#fff' }}
+                  className="qr-img"
                 />
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.375rem 0' }}>店内贴 · 扫码离店</p>
+                <p className="qr-caption">店内贴 · 扫码离店</p>
                 <a href={`/api/admin/points/${id}/qr?type=checkout`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
               </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.7, flex: 1, minWidth: '200px' }}>
@@ -252,7 +244,7 @@ export default function AdminPointEditPage() {
           </div>
         )}
 
-        {error && <p className="field-error" role="alert" style={{ marginBottom: '1rem' }}>⚠ {error}</p>}
+        {error && <p className="field-error" role="alert">⚠ {error}</p>}
 
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button type="button" className="btn btn-ghost" onClick={() => router.back()}>取消</button>
