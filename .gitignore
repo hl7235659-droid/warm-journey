@@ -29,6 +29,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# cloudflare local secrets（本地开发密钥，严禁提交）
+.dev.vars
+.dev.vars.*
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -41,3 +45,7 @@ next-env.d.ts
 
 # EPERM workaround residues
 .next.bak*/
+
+# 本地冒烟测试的隔离 D1/R2 状态（workerd 句柄释放慢，可能残留）
+.wrangler-smoke*/
+.wrangler-verify/

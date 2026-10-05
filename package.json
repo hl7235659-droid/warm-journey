@@ -7,20 +7,28 @@
     "build": "next build",
     "start": "next start",
     "pages:build": "node scripts/build-pages.cjs",
-    "pages:deploy": "npx wrangler pages deploy .vercel/output/static --project-name=warm-journey --branch=nuanru",
+    "pages:deploy": "node scripts/deploy.cjs",
     "db:migrate": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/schema.sql",
     "db:migrate:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/schema.sql",
+    "db:migrate:20261005": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/migrate-20261005.sql",
+    "db:migrate:20261005:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/migrate-20261005.sql",
+    "db:migrate:safe": "node scripts/migrate.cjs",
+    "db:migrate:safe:prod": "node scripts/migrate.cjs --remote",
+    "db:gc": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/gc.sql",
+    "db:gc:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/gc.sql",
     "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql",
-    "db:seed:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/seed.sql"
+    "test": "node --experimental-strip-types --test \"scripts/tests/*.test.mjs\"",
+    "admin:create": "node scripts/create-admin.mjs",
+    "admin:create:prod": "node scripts/create-admin.mjs --remote"
   },
   "dependencies": {
     "next": "15.3.5",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "@cloudflare/next-on-pages": "^1.13.10",
+    "@cloudflare/next-on-pages": "1.13.10",
     "jose": "^5.10.0",
     "zod": "^3.24.1",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "2.4.3",
     "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
