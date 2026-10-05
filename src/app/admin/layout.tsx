@@ -16,7 +16,6 @@ const NAV: NavItem[] = [
   { href: '/admin/inspections', label: '巡检',     icon: '🔍' },
   { href: '/admin/visits',      label: '在店',     icon: '👥' },
   { href: '/admin/knowledge',   label: '知识库',   icon: '📚', roles: ['super_admin', 'admin'] },
-  { href: '/admin/heatmap',     label: '热力图',   icon: '🗺️' },
   { href: '/admin/cities',      label: '城市',     icon: '🏙️', roles: ['super_admin', 'admin'] },
   { href: '/admin/users',       label: '账号',     icon: '👤', roles: ['super_admin'] },
 ];

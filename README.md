@@ -35,8 +35,7 @@
 - **AI 知识库**：权益政策 / 求助渠道 / 常见问题 / 平台公告条目 CRUD，启用条目被小暖检索引用
 - 上报审核（同一点位 ≥3 条待核实上报自动开工单）
 - 工单系统、巡检记录（可附照片）
-- 上报热力图（腾讯地图 GL JS，需自配密钥）
-- 多城市管理（C 端城市筛选 + 地图默认视野）
+- 多城市管理（C 端城市筛选）
 - 账号管理（super_admin 专属：建号/重置密码/改角色/删号，三级角色权限）
 
 ---
@@ -163,13 +162,6 @@ npx wrangler r2 bucket create warm-journey-images
 3. Variable name: `DB`
 4. D1 database: 选择你的数据库
 （R2 绑定 `BUCKET` 已写在 wrangler.toml，pages deploy 会自动带上）
-
-### 热力图密钥
-
-管理端「热力图」页使用腾讯地图 GL JS。到
-[腾讯位置服务开放平台](https://lbs.qq.com/dev/console/key/add) 创建应用并添加 Key
-（勾选 JavaScript API GL），替换 `src/app/admin/heatmap/page.tsx` 顶部的 `TMAP_KEY`
-占位符；建议配置 Referer 白名单防盗用。
 
 ### AI 助手（小暖）环境变量（可选，Cloudflare Pages 后台 Settings → Environment variables）
 
