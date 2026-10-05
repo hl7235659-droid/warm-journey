@@ -5,7 +5,7 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const base = 'C:\\Users\\tebbit\\.claude\\warm-journey\\.vercel\\output\\functions';
+const base = path.resolve(__dirname, '..', '.vercel', 'output', 'functions');
 
 // Scan for all .func directories and create junctions to the first one found
 function scanAndLink() {

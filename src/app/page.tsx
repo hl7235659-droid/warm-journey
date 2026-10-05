@@ -1,5 +1,4 @@
 'use client';
-export const runtime = 'edge';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ServicePoint } from '@/lib/types';

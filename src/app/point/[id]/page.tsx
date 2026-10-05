@@ -5,7 +5,6 @@ import { getPoint, getPointSignals, getOccupancy } from '@/lib/db';
 import type { ServicePoint } from '@/lib/types';
 import PointDetailClient from './PointDetailClient';
 
-export const runtime = 'edge';
 
 interface Props { params: Promise<{ id: string }> }
 

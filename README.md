@@ -230,7 +230,6 @@ warm-journey/
 ├── public/
 │   └── images/                  # 生成视觉素材与驿站实景照
 ├── scripts/
-│   ├── add-edge-runtime.cjs     # 自动添加 edge runtime 声明
 │   └── patch-vercel-funcs.cjs   # Windows 符号链接修复脚本
 ├── wrangler.toml                # Cloudflare 配置
 └── next.config.mjs              # Next.js 配置
@@ -263,7 +262,10 @@ warm-journey/
 
 ### Edge Runtime 要求
 
-所有页面和 API 路由必须声明 edge runtime：
+页面与 API 路由都在 Cloudflare Pages（workerd）上运行，但声明位置只有一处是必需的：
+
+- `src/app/layout.tsx` 声明一次 `export const runtime = 'edge'`，Next.js 让**页面路由**从 layout 继承该段配置，各 `page.tsx` 不必重复写；
+- `src/app/api/**/route.ts` **各自声明**：route 段不属于页面，不继承 layout 的 runtime。
 
 ```typescript
 export const runtime = 'edge';

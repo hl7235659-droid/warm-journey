@@ -1,5 +1,4 @@
 'use client';
-export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Report } from '@/lib/types';
