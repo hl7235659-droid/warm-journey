@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { type Admin, AdminCtx } from './admin-context';
+import { api } from '@/lib/api-client';
+import { readItem, writeItem } from '@/lib/local';
 
 // roles 与后端 withAdmin 的角色白名单保持一致：入口不给看不到的人（点了才吃 403 是坏体验）
 type NavItem = { href: string; label: string; icon: string; exact?: boolean; roles?: string[] };
@@ -37,20 +39,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (pathname === '/admin/login') { setReady(true); return; }
-    fetch('/api/admin/me').then(async r => {
-      if (!r.ok) { router.replace('/admin/login'); return; }
-      const j = await r.json() as { ok: boolean; data: Admin };
+    void api<Admin>('/api/admin/me').then(j => {
       if (j.ok) setAdmin(j.data);
       else router.replace('/admin/login');
-    }).catch(() => router.replace('/admin/login')).finally(() => setReady(true));
+    }).finally(() => setReady(true));
   }, [pathname, router]);
 
   // 恢复桌面端折叠偏好
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true);
-    } catch { /* ignore */ }
-  }, []);
+  useEffect(() => { setCollapsed(readItem(COLLAPSE_KEY) === '1'); }, []);
 
   // 切换路由时关闭移动端抽屉
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
@@ -70,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
     setCollapsed(v => {
       const next = !v;
-      try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+      writeItem(COLLAPSE_KEY, next ? '1' : '0');
       return next;
     });
   }, []);

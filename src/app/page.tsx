@@ -1,17 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { ServicePoint } from '@/lib/types';
-import { STATUS_LABELS, SERVICE_TAGS } from '@/lib/types';
+import type { ServicePoint, PointStatus } from '@/lib/types';
+import { STATUS_LABELS, STATUS_SEALS, POINT_STATUSES, SERVICE_TAGS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
+import { api } from '@/lib/api-client';
+import { LS_KEYS, readList, writeList } from '@/lib/local';
 import { Branch, Corners, Swoosh } from '@/components/ornaments';
 
-
-const STATUS_SEALS: Record<ServicePoint['status'], string> = {
-  open: 'seal-jade',
-  closed: 'seal-ink',
-  temp_closed: 'seal-gold',
-};
+// 状态筛选 chips：'全部' + 与后端同一份状态枚举
+const STATUS_CHIPS: Array<'' | PointStatus> = ['', ...POINT_STATUSES];
 
 // Simple distance calc (Haversine, km)
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -98,7 +96,8 @@ function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
   );
 }
 
-const FAVS_KEY = 'wj_favs';
+// 收藏裁剪上限：远大于站点总数，实际不会丢收藏（默认 50 会静默丢弃新收藏）
+const FAV_MAX = 500;
 
 export default function HomePage() {
   const [points, setPoints] = useState<ServicePoint[]>([]);
@@ -125,12 +124,11 @@ export default function HomePage() {
     return () => clearTimeout(t);
   }, [q]);
 
-  // 已开通城市
+  // 已开通城市（失败不阻塞主流程）
   useEffect(() => {
-    fetch('/api/cities')
-      .then(r => r.json() as Promise<{ ok: boolean; data?: { id: string; name: string }[] }>)
-      .then(j => { if (j.ok && j.data) setCities(j.data); })
-      .catch(() => { /* 城市列表失败不阻塞主流程 */ });
+    void api<{ id: string; name: string }[]>('/api/cities').then(j => {
+      if (j.ok && j.data) setCities(j.data);
+    });
   }, []);
 
   // URL 参数初值（AI filter action 落点：/?city=广州&service=充电）
@@ -145,17 +143,12 @@ export default function HomePage() {
   }, []);
 
   // 收藏（localStorage）
-  useEffect(() => {
-    try {
-      const list = JSON.parse(localStorage.getItem(FAVS_KEY) ?? '[]') as string[];
-      setFavs(list);
-    } catch { /* ignore */ }
-  }, []);
+  useEffect(() => { setFavs(readList<string>(LS_KEYS.favs, FAV_MAX)); }, []);
 
   function toggleFav(id: string) {
     setFavs(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      try { localStorage.setItem(FAVS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      writeList(LS_KEYS.favs, next, FAV_MAX);
       return next;
     });
   }
@@ -164,31 +157,27 @@ export default function HomePage() {
     const seq = ++seqRef.current;
     setLoading(true);
     setLoadError(false);
-    try {
-      const params = new URLSearchParams();
-      if (debouncedQ) params.set('q', debouncedQ);
-      if (statusFilter) params.set('status', statusFilter);
-      if (cityFilter) params.set('city', cityFilter);
-      if (serviceFilter) params.set('service', serviceFilter);
-      params.set('page_size', '50');
-      const res = await fetch(`/api/points?${params}`);
-      const json = await res.json() as { ok: boolean; data?: { items: ServicePoint[]; total: number } };
-      if (seq !== seqRef.current) return; // 已有更新的请求，丢弃本次结果
-      if (json.ok && json.data) {
-        let items = json.data.items;
-        if (userLat !== null && userLng !== null) {
-          items = [...items].sort((a, b) =>
-            haversine(userLat, userLng, a.lat, a.lng) - haversine(userLat, userLng, b.lat, b.lng)
-          );
-        }
-        setPoints(items);
-        setTotal(json.data.total);
+    const params = new URLSearchParams();
+    if (debouncedQ) params.set('q', debouncedQ);
+    if (statusFilter) params.set('status', statusFilter);
+    if (cityFilter) params.set('city', cityFilter);
+    if (serviceFilter) params.set('service', serviceFilter);
+    params.set('page_size', '50');
+    const json = await api<{ items: ServicePoint[]; total: number }>(`/api/points?${params}`);
+    if (seq !== seqRef.current) return; // 已有更新的请求，丢弃本次结果
+    if (json.ok && json.data) {
+      let items = json.data.items;
+      if (userLat !== null && userLng !== null) {
+        items = [...items].sort((a, b) =>
+          haversine(userLat, userLng, a.lat, a.lng) - haversine(userLat, userLng, b.lat, b.lng)
+        );
       }
-    } catch {
-      if (seq === seqRef.current) setLoadError(true);
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
+      setPoints(items);
+      setTotal(json.data.total);
+    } else {
+      setLoadError(true);
     }
+    setLoading(false);
   }, [debouncedQ, statusFilter, cityFilter, serviceFilter, userLat, userLng]);
 
   useEffect(() => { void fetchPoints(); }, [fetchPoints]);
@@ -305,14 +294,14 @@ export default function HomePage() {
           <div className="panel-row">
             <span className="brush-label">筛选</span>
             <div className="toolbar-chips" role="group" aria-label="状态筛选">
-              {['', 'open', 'closed', 'temp_closed'].map(s => (
+              {STATUS_CHIPS.map(s => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
                   className={`tab${statusFilter === s ? ' is-active' : ''}`}
                   aria-pressed={statusFilter === s}
                 >
-                  {{ '': '全部', open: '开放中', closed: '已关闭', temp_closed: '临时关闭' }[s]}
+                  {s === '' ? '全部' : STATUS_LABELS[s]}
                 </button>
               ))}
               <button

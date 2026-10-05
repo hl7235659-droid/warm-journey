@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAdmin } from './admin-context';
 import type { AdminStats } from '@/lib/db';
+import { api } from '@/lib/api-client';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员', admin: '管理员', inspector: '巡检员',
@@ -14,10 +15,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/stats')
-      .then(r => r.json() as Promise<{ ok: boolean; data?: AdminStats }>)
-      .then(j => { if (j.ok && j.data) setStats(j.data); })
-      .finally(() => setLoading(false));
+    void api<AdminStats>('/api/admin/stats').then(j => {
+      if (j.ok && j.data) setStats(j.data);
+      setLoading(false);
+    });
   }, []);
 
   const cards: { label: string; value: number | undefined; href: string; tone?: 'warn' | 'ok' }[] = [

@@ -4,6 +4,7 @@
 // 只做「带路 + 预填」（跳转到既有表单页），绝不自动提交。
 import { ActionSchema } from '@/lib/ai/actions';
 import { navToPoint } from '@/lib/nav';
+import { api } from '@/lib/api-client';
 import type { AiAction } from '@/lib/ai/types';
 
 export interface ExecResult {
@@ -60,27 +61,19 @@ export async function executeAction(
       return { ok: true, message: '请先选择要上报的站点' };
     }
     case 'route': {
-      try {
-        const res = await fetch(`/api/points/${a.params.pointId}`);
-        const json = (await res.json()) as { ok: boolean; data?: { lat: number; lng: number; name: string } };
-        if (!json.ok || !json.data) return { ok: false, message: '站点不存在或已下线' };
-        navToPoint(json.data.lat, json.data.lng, json.data.name);
-        return { ok: true, message: '已唤起地图导航' };
-      } catch {
-        return { ok: false, message: '获取站点信息失败' };
-      }
+      const json = await api<{ lat: number; lng: number; name: string }>(`/api/points/${a.params.pointId}`);
+      if (!json.ok) return { ok: false, message: json.error ?? '获取站点信息失败' };
+      if (!json.data) return { ok: false, message: '站点不存在或已下线' };
+      navToPoint(json.data.lat, json.data.lng, json.data.name);
+      return { ok: true, message: '已唤起地图导航' };
     }
     case 'feedback': {
-      try {
-        const res = await fetch(`/api/visits/${a.params.visitId}`);
-        const json = (await res.json()) as { ok: boolean; data?: { visit?: { point_id?: string } } };
-        const pointId = json.data?.visit?.point_id;
-        if (!json.ok || !pointId) return { ok: false, message: '到访记录不存在' };
-        router.push(`/checkout/${pointId}`);
-        return { ok: true, message: '已打开离店反馈页' };
-      } catch {
-        return { ok: false, message: '获取到访记录失败' };
-      }
+      const json = await api<{ visit?: { point_id?: string } }>(`/api/visits/${a.params.visitId}`);
+      if (!json.ok) return { ok: false, message: json.error ?? '获取到访记录失败' };
+      const pointId = json.data?.visit?.point_id;
+      if (!pointId) return { ok: false, message: '到访记录不存在' };
+      router.push(`/checkout/${pointId}`);
+      return { ok: true, message: '已打开离店反馈页' };
     }
     case 'list_knowledge': {
       // 由调用方（AiDock）处理：拉取条目并作为消息展示
@@ -93,19 +86,14 @@ export async function executeAction(
 export async function fetchKnowledgeFor(action: AiAction): Promise<string | null> {
   const parsed = ActionSchema.safeParse(action);
   if (!parsed.success || parsed.data.type !== 'list_knowledge') return null;
-  try {
-    const res = await fetch(`/api/ai/knowledge?category=${parsed.data.params.category}`);
-    const json = (await res.json()) as {
-      ok: boolean;
-      data?: Array<{ title: string; content: string; category: string }>;
-    };
-    if (!json.ok || !json.data || json.data.length === 0) {
-      return '这类知识暂时没有条目。可以换个类别问，或直接描述你的问题。';
-    }
-    return json.data
-      .map((k) => `📖 ${k.title}\n${k.content}`)
-      .join('\n\n————————\n\n');
-  } catch {
-    return '知识库暂时取不到，请稍后再试。';
+  const json = await api<{ title: string; content: string; category: string }[]>(
+    `/api/ai/knowledge?category=${parsed.data.params.category}`,
+  );
+  if (!json.ok) return '知识库暂时取不到，请稍后再试。';
+  if (!json.data || json.data.length === 0) {
+    return '这类知识暂时没有条目。可以换个类别问，或直接描述你的问题。';
   }
+  return json.data
+    .map((k) => `📖 ${k.title}\n${k.content}`)
+    .join('\n\n————————\n\n');
 }

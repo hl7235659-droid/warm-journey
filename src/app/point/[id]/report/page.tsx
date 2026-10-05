@@ -4,6 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { REPORT_CATEGORY_LABELS } from '@/lib/types';
 import type { ReportCategory } from '@/lib/types';
+import { api } from '@/lib/api-client';
+import { LS_KEYS, MY_REPORTS_MAX, readList, writeList } from '@/lib/local';
+import type { MyReport } from '@/lib/local';
+import { uploadImages } from '@/lib/upload';
+import type { UploadedImage } from '@/lib/upload';
 
 const CATEGORIES = Object.entries(REPORT_CATEGORY_LABELS) as [ReportCategory, string][];
 
@@ -17,7 +22,7 @@ export default function ReportPage() {
   const [queryCode, setQueryCode] = useState('');
   const [codeCopied, setCodeCopied] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
-  const [images, setImages] = useState<{ key: string; url: string }[]>([]);
+  const [images, setImages] = useState<UploadedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,17 +45,9 @@ export default function ReportPage() {
     setUploading(true);
     setError('');
     try {
-      for (const file of files) {
-        if (file.size > 5 * 1024 * 1024) { setError(`「${file.name}」超过 5MB，已跳过`); continue; }
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await fetch('/api/upload', { method: 'POST', body: fd });
-        const json = await res.json() as { ok: boolean; error?: string; data?: { key: string; url: string } };
-        if (json.ok && json.data) setImages(prev => [...prev, json.data!]);
-        else setError(json.error ?? '图片上传失败');
-      }
-    } catch {
-      setError('图片上传失败，请稍后重试');
+      await uploadImages(files, img => setImages(prev => [...prev, img]));
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setUploading(false);
     }
@@ -64,30 +61,21 @@ export default function ReportPage() {
     if (content.trim().length < 5) return;
     setSubmitting(true);
     setError('');
-    try {
-      const res = await fetch('/api/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ point_id: params.id, category, content: content.trim(), images: images.map(i => i.key) }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string; data?: { query_code?: string } };
-      if (!json.ok) { setError(json.error ?? '提交失败，请重试'); return; }
-      const code = json.data?.query_code ?? '';
-      setQueryCode(code);
-      if (code) {
-        try {
-          const key = 'wj_my_reports';
-          const list = JSON.parse(localStorage.getItem(key) ?? '[]') as { code: string; point_id: string; ts: number }[];
-          list.unshift({ code, point_id: params.id, ts: Date.now() });
-          localStorage.setItem(key, JSON.stringify(list.slice(0, 20)));
-        } catch { /* localStorage 不可用时静默跳过 */ }
-      }
-      setDone(true);
-    } catch {
-      setError('网络异常，请稍后重试');
-    } finally {
-      setSubmitting(false);
+    const json = await api<{ query_code?: string }>('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point_id: params.id, category, content: content.trim(), images: images.map(i => i.key) }),
+    });
+    setSubmitting(false);
+    if (!json.ok) { setError(json.error ?? '提交失败，请重试'); return; }
+    const code = json.data.query_code ?? '';
+    setQueryCode(code);
+    if (code) {
+      writeList<MyReport>(LS_KEYS.myReports,
+        [{ code, point_id: params.id, ts: Date.now() }, ...readList<MyReport>(LS_KEYS.myReports, MY_REPORTS_MAX)],
+        MY_REPORTS_MAX);
     }
+    setDone(true);
   }
 
   if (done) return (

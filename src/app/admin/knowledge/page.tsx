@@ -3,21 +3,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import type { AiKnowledge } from '@/lib/db';
+import { api, ACTION_ERR } from '@/lib/api-client';
+import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
+import type { KnowledgeCategory } from '@/lib/types';
 
-const CATEGORIES = { rights: '权益政策', channel: '求助渠道', faq: '常见问题', notice: '平台公告' } as const;
-type CategoryKey = keyof typeof CATEGORIES;
-const CATEGORY_KEYS = Object.keys(CATEGORIES) as CategoryKey[];
+const CATEGORIES: Record<KnowledgeCategory, string> = {
+  rights: '权益政策', channel: '求助渠道', faq: '常见问题', notice: '平台公告',
+};
+type CategoryKey = KnowledgeCategory;
+const CATEGORY_KEYS: readonly CategoryKey[] = KNOWLEDGE_CATEGORIES;
 const CATEGORY_BADGE: Record<CategoryKey, string> = {
   rights: 'badge-blue', channel: 'badge-green', faq: 'badge-amber', notice: 'badge-gray',
 };
-
-type ListResp = { ok: boolean; data?: { items: AiKnowledge[]; total: number } };
-type WriteResp = { ok: boolean; error?: string };
-
-async function readResp(r: Response): Promise<WriteResp> {
-  try { return await r.json() as WriteResp; }
-  catch { return { ok: false, error: `请求失败（HTTP ${r.status}）` }; }
-}
 
 /** 逗号分隔 → 去空去重、单项 ≤20 字、最多 10 个 */
 function parseTags(s: string): string[] {
@@ -53,14 +50,12 @@ export default function AdminKnowledgePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ page: '1', page_size: '50' });
-      if (category) p.set('category', category);
-      if (q) p.set('q', q);
-      const r = await fetch(`/api/admin/knowledge?${p}`);
-      const j = await r.json() as ListResp;
-      if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    } finally { setLoading(false); }
+    const p = new URLSearchParams({ page: '1', page_size: '50' });
+    if (category) p.set('category', category);
+    if (q) p.set('q', q);
+    const j = await api<{ items: AiKnowledge[]; total: number }>(`/api/admin/knowledge?${p}`);
+    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
+    setLoading(false);
   }, [category, q]);
 
   useEffect(() => { void load(); }, [load]);
@@ -91,48 +86,36 @@ export default function AdminKnowledgePage() {
     if (!form.content.trim()) { setError('正文不能为空'); return; }
     setSaving(true);
     setError('');
-    try {
-      const r = await fetch(editing ? `/api/admin/knowledge/${editing.id}` : '/api/admin/knowledge', {
-        method: editing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: form.category,
-          title: form.title.trim(),
-          content: form.content.trim(),
-          tags: parseTags(form.tags),
-        }),
-      });
-      const j = await readResp(r);
-      if (j.ok) { closeForm(); void load(); }
-      else { const msg = j.error ?? '保存失败'; setError(msg); alert(msg); }
-    } catch {
-      const msg = '网络错误，保存失败';
-      setError(msg);
-      alert(msg);
-    } finally { setSaving(false); }
+    const j = await api(editing ? `/api/admin/knowledge/${editing.id}` : '/api/admin/knowledge', {
+      method: editing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: form.category,
+        title: form.title.trim(),
+        content: form.content.trim(),
+        tags: parseTags(form.tags),
+      }),
+    });
+    setSaving(false);
+    if (j.ok) { closeForm(); void load(); }
+    else { const msg = j.error ?? '保存失败'; setError(msg); alert(msg); }
   }
 
   async function toggleEnabled(it: AiKnowledge) {
-    try {
-      const r = await fetch(`/api/admin/knowledge/${it.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !it.enabled }),
-      });
-      const j = await readResp(r);
-      if (j.ok) void load();
-      else alert(j.error ?? '操作失败');
-    } catch { alert('网络错误，操作失败'); }
+    const j = await api(`/api/admin/knowledge/${it.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !it.enabled }),
+    });
+    if (j.ok) void load();
+    else alert(j.error ?? ACTION_ERR);
   }
 
   async function remove(it: AiKnowledge) {
     if (!window.confirm(`确定删除「${it.title}」？此操作不可恢复。`)) return;
-    try {
-      const r = await fetch(`/api/admin/knowledge/${it.id}`, { method: 'DELETE' });
-      const j = await readResp(r);
-      if (j.ok) void load();
-      else alert(j.error ?? '删除失败');
-    } catch { alert('网络错误，删除失败'); }
+    const j = await api(`/api/admin/knowledge/${it.id}`, { method: 'DELETE' });
+    if (j.ok) void load();
+    else alert(j.error ?? '删除失败');
   }
 
   return (

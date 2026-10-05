@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import type { City } from '@/lib/db';
+import { api } from '@/lib/api-client';
 
 export default function AdminCitiesPage() {
   const canWrite = useCanWrite();
@@ -15,11 +16,9 @@ export default function AdminCitiesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const r = await fetch('/api/admin/cities');
-      const j = await r.json() as { ok: boolean; data?: City[] };
-      if (j.ok && j.data) setItems(j.data);
-    } finally { setLoading(false); }
+    const j = await api<City[]>('/api/admin/cities');
+    if (j.ok && j.data) setItems(j.data);
+    setLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -28,33 +27,28 @@ export default function AdminCitiesPage() {
     e.preventDefault();
     setSaving(true);
     setError('');
-    try {
-      const r = await fetch('/api/admin/cities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          center_lat: parseFloat(form.center_lat) || 0,
-          center_lng: parseFloat(form.center_lng) || 0,
-        }),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setShowForm(false); setForm({ name: '', center_lat: '', center_lng: '' }); void load(); }
-      else setError(j.error ?? '创建失败');
-    } finally { setSaving(false); }
+    const j = await api('/api/admin/cities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: form.name.trim(),
+        center_lat: parseFloat(form.center_lat) || 0,
+        center_lng: parseFloat(form.center_lng) || 0,
+      }),
+    });
+    setSaving(false);
+    if (j.ok) { setShowForm(false); setForm({ name: '', center_lat: '', center_lng: '' }); void load(); }
+    else setError(j.error ?? '创建失败');
   }
 
   async function toggleEnabled(c: City) {
-    try {
-      const r = await fetch(`/api/admin/cities/${c.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: c.enabled ? 0 : 1 }),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) void load();
-      else alert(j.error ?? '操作失败');
-    } catch { alert('网络异常，请稍后重试'); }
+    const j = await api(`/api/admin/cities/${c.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: c.enabled ? 0 : 1 }),
+    });
+    if (j.ok) void load();
+    else alert(j.error ?? '操作失败');
   }
 
   return (

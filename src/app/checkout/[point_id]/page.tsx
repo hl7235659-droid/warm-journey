@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
 import type { Visit } from '@/lib/types';
 import { getRiderToken } from '@/lib/rider';
+import { api, ACTION_ERR } from '@/lib/api-client';
 
 type Stage = 'loading' | 'none' | 'confirm' | 'survey' | 'thanks';
 
@@ -22,35 +23,28 @@ export default function CheckoutPage() {
   const [suggestion, setSuggestion] = useState('');
 
   useEffect(() => {
-    const token = getRiderToken();
-    fetch('/api/visits/active', {
+    void api<{ visit: Visit | null }>('/api/visits/active', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ point_id: pointId, rider_token: token }),
-    })
-      .then(r => r.json() as Promise<{ ok: boolean; data?: { visit: Visit | null } }>)
-      .then(j => {
-        const v = j.ok && j.data ? j.data.visit : null;
-        setVisit(v);
-        setStage(v && v.status === 'in_store' ? 'confirm' : 'none');
-      })
-      .catch(() => setStage('none'));
+      body: JSON.stringify({ point_id: pointId, rider_token: getRiderToken() }),
+    }).then(j => {
+      const v = j.ok && j.data ? j.data.visit : null;
+      setVisit(v);
+      setStage(v && v.status === 'in_store' ? 'confirm' : 'none');
+    });
   }, [pointId]);
 
   async function handleCheckout() {
     if (!visit) return;
     setBusy(true); setError('');
-    try {
-      const res = await fetch(`/api/visits/${visit.id}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rider_token: getRiderToken() }),
-      });
-      const j = await res.json() as { ok: boolean; error?: string };
-      if (!j.ok) { setError(j.error ?? '操作失败，请重试'); return; }
-      setStage('survey');
-    } catch { setError('网络异常，请稍后重试'); }
-    finally { setBusy(false); }
+    const j = await api<{ visit: Visit }>(`/api/visits/${visit.id}/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rider_token: getRiderToken() }),
+    });
+    setBusy(false);
+    if (!j.ok) { setError(j.error ?? ACTION_ERR); return; }
+    setStage('survey');
   }
 
   function toggleSupport(tag: string) {
@@ -62,14 +56,13 @@ export default function CheckoutPage() {
     if (!skip && rating === 0) { setError('请先打个分'); return; }
     if (!skip) {
       setBusy(true); setError('');
-      try {
-        await fetch(`/api/visits/${visit.id}/feedback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rider_token: getRiderToken(), rating, supports, suggestion: suggestion.trim() }),
-        });
-      } catch { /* 反馈失败不阻塞 */ }
-      finally { setBusy(false); }
+      // 反馈失败不阻塞离店流程
+      await api(`/api/visits/${visit.id}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rider_token: getRiderToken(), rating, supports, suggestion: suggestion.trim() }),
+      });
+      setBusy(false);
     }
     setStage('thanks');
   }

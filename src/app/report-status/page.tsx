@@ -2,18 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS } from '@/lib/types';
-import type { ReportCategory, ReportStatus } from '@/lib/types';
+import type { ReportStatus } from '@/lib/types';
+import type { ReportStatusPublic } from '@/lib/db';
+import { api } from '@/lib/api-client';
+import { LS_KEYS, MY_REPORTS_MAX, readList } from '@/lib/local';
+import type { MyReport } from '@/lib/local';
 
-interface MyReport { code: string; point_id: string; ts: number }
-
-interface ReportStatusData {
-  id: string;
-  point_id: string;
-  point_name?: string;
-  category: ReportCategory;
-  status: ReportStatus;
-  created_at: number;
-}
+// 进度查询页只读这几个字段（响应里的 id 不参与展示）
+type ReportStatusData = Pick<ReportStatusPublic,
+  'point_id' | 'point_name' | 'category' | 'status' | 'created_at'>;
 
 const STATUS_SEALS: Record<ReportStatus, string> = {
   pending: 'seal-gold',
@@ -21,8 +18,6 @@ const STATUS_SEALS: Record<ReportStatus, string> = {
   resolved: 'seal-jade',
   closed: 'seal-ink',
 };
-
-const LS_KEY = 'wj_my_reports';
 
 function fmtDate(ts: number) {
   return new Date(ts * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -36,10 +31,7 @@ export default function ReportStatusPage() {
   const [myReports, setMyReports] = useState<MyReport[]>([]);
 
   useEffect(() => {
-    try {
-      const list = JSON.parse(localStorage.getItem(LS_KEY) ?? '[]') as MyReport[];
-      setMyReports(list);
-    } catch { /* 忽略损坏的本地数据 */ }
+    setMyReports(readList<MyReport>(LS_KEYS.myReports, MY_REPORTS_MAX));
   }, []);
 
   async function query(c: string) {
@@ -48,16 +40,10 @@ export default function ReportStatusPage() {
     setLoading(true);
     setError('');
     setResult(null);
-    try {
-      const res = await fetch(`/api/reports/status?code=${encodeURIComponent(trimmed)}`);
-      const json = await res.json() as { ok: boolean; error?: string; data?: ReportStatusData };
-      if (!json.ok || !json.data) { setError(json.error ?? '查询失败，请重试'); return; }
-      setResult(json.data);
-    } catch {
-      setError('网络异常，请稍后重试');
-    } finally {
-      setLoading(false);
-    }
+    const json = await api<ReportStatusData>(`/api/reports/status?code=${encodeURIComponent(trimmed)}`);
+    if (!json.ok) setError(json.error ?? '查询失败，请重试');
+    else setResult(json.data);
+    setLoading(false);
   }
 
   return (
@@ -122,7 +108,7 @@ export default function ReportStatusPage() {
 
         {myReports.length > 0 && (
           <section>
-            <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+            <h2 className="sub-title">
               本机上报记录
             </h2>
             <div className="stack-sm">

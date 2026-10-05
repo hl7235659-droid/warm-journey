@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { PointHistory } from '@/lib/types';
+import { api } from '@/lib/api-client';
 
 export default function PointHistoryPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,10 +13,10 @@ export default function PointHistoryPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/admin/points/${id}/history`)
-      .then(r => r.json() as Promise<{ ok: boolean; data?: PointHistory[] }>)
-      .then(j => { if (j.ok && j.data) setHistory(j.data); })
-      .finally(() => setLoading(false));
+    void api<PointHistory[]>(`/api/admin/points/${id}/history`).then(j => {
+      if (j.ok && j.data) setHistory(j.data);
+      setLoading(false);
+    });
   }, [id]);
 
   return (

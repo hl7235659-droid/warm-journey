@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { ServicePoint } from '@/lib/types';
-import { STATUS_LABELS } from '@/lib/types';
+import { STATUS_LABELS, STATUS_SEALS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { Corners } from '@/components/ornaments';
 import type { PointSignals, Occupancy } from '@/lib/db';
 import { navToPoint } from '@/lib/nav';
 import { getRiderToken } from '@/lib/rider';
+import { api } from '@/lib/api-client';
+import { LS_KEYS, readItem, writeItem } from '@/lib/local';
 import VisitCard from './VisitCard';
 
 interface Props { point: ServicePoint; signals: PointSignals; occupancy: Occupancy }
@@ -19,42 +21,32 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const statusClass = { open: 'seal-jade', closed: 'seal-ink', temp_closed: 'seal-gold' }[point.status];
+  const statusClass = STATUS_SEALS[point.status];
   const updatedDate = new Date(point.updated_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
   const isPhoto = POINT_COVERS[point.id] !== undefined;
 
-  const CONFIRM_KEY = `wj_confirmed_${point.id}`;
+  const CONFIRM_KEY = LS_KEYS.confirmed(point.id);
 
   // 本机已确认过则置灰，避免重复计数
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(CONFIRM_KEY)) setConfirmed(true);
-    } catch { /* ignore */ }
-  }, [CONFIRM_KEY]);
+  useEffect(() => { if (readItem(CONFIRM_KEY)) setConfirmed(true); }, [CONFIRM_KEY]);
 
   async function handleConfirm() {
     if (confirmed || confirming) return;
     setConfirming(true);
-    try {
-      const res = await fetch(`/api/points/${point.id}/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rider_token: getRiderToken() }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string; data?: { confirm_count: number } };
-      if (json.ok && json.data) {
-        setConfirmCount(json.data.confirm_count);
-        setConfirmed(true);
-        try { localStorage.setItem(CONFIRM_KEY, '1'); } catch { /* ignore */ }
-      } else if (json.error) {
-        setConfirmError(json.error);
-      }
-    } catch {
-      setConfirmError('网络异常，请稍后重试');
-    } finally {
-      setConfirming(false);
+    const json = await api<{ confirm_count: number }>(`/api/points/${point.id}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rider_token: getRiderToken() }),
+    });
+    if (json.ok) {
+      setConfirmCount(json.data.confirm_count);
+      setConfirmed(true);
+      writeItem(CONFIRM_KEY, '1');
+    } else if (json.error) {
+      setConfirmError(json.error);
     }
+    setConfirming(false);
   }
 
   // 卸载时清理"已复制"提示的定时器
@@ -150,7 +142,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
         {/* Services — 素读点分隔 */}
         {point.services.length > 0 && (
           <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '340ms' }}>
-            <h2 style={{ margin: '0 0 0.6rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+            <h2 className="sub-title">
               服务项目
             </h2>
             <p className="svc-list">
@@ -166,7 +158,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
 
         {/* 实时信号：还能用吗 */}
         <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '380ms' }}>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+          <h2 className="sub-title">
             站点近况
           </h2>
           <div className="stack-sm">
@@ -216,7 +208,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
         {/* Admission */}
         {(point.admission.id_required || point.admission.capacity || point.admission.notes) && (
           <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '400ms' }}>
-            <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+            <h2 className="sub-title">
               准入要求
             </h2>
             <div className="stack-sm">
@@ -251,7 +243,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
         {/* Notes */}
         {point.notes && (
           <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '460ms' }}>
-            <h2 style={{ margin: '0 0 0.5rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+            <h2 className="sub-title">
               备注
             </h2>
             <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.7, fontFamily: 'var(--font-sans)' }}>{point.notes}</p>

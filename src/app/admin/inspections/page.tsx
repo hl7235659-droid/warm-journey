@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Inspection } from '@/lib/types';
 import { INSPECTION_RESULT_LABELS } from '@/lib/types';
+import { api } from '@/lib/api-client';
+import { uploadImages } from '@/lib/upload';
+import type { UploadedImage } from '@/lib/upload';
 
 const RESULT_BADGE: Record<string, string> = {
   pass: 'badge-green', fail: 'badge-red', partial: 'badge-amber',
@@ -15,17 +18,16 @@ export default function AdminInspectionsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ point_id: '', result: 'pass', notes: '' });
-  const [images, setImages] = useState<{ key: string; url: string }[]>([]);
+  const [images, setImages] = useState<UploadedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [points, setPoints] = useState<{ id: string; name: string }[]>([]);
 
-  // 服务点下拉（替代手填 ID）
+  // 服务点下拉（替代手填 ID）：失败时仍可手填
   useEffect(() => {
-    fetch('/api/admin/points?page_size=100')
-      .then(r => r.json() as Promise<{ ok: boolean; data?: { items: { id: string; name: string }[] } }>)
-      .then(j => { if (j.ok && j.data) setPoints(j.data.items); })
-      .catch(() => { /* 失败时仍可手填 ID */ });
+    void api<{ items: { id: string; name: string }[] }>('/api/admin/points?page_size=100').then(j => {
+      if (j.ok && j.data) setPoints(j.data.items);
+    });
   }, []);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -35,25 +37,18 @@ export default function AdminInspectionsPage() {
     if (images.length + files.length > 8) { alert('最多上传 8 张图片'); return; }
     setUploading(true);
     try {
-      for (const file of files) {
-        if (file.size > 5 * 1024 * 1024) continue;
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await fetch('/api/upload', { method: 'POST', body: fd });
-        const json = await res.json() as { ok: boolean; data?: { key: string; url: string } };
-        if (json.ok && json.data) setImages(prev => [...prev, json.data!]);
-      }
+      await uploadImages(files, img => setImages(prev => [...prev, img]));
+    } catch (err) {
+      alert((err as Error).message);
     } finally { setUploading(false); }
   }
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ page: String(page), page_size: '20' });
-      const r = await fetch(`/api/admin/inspections?${p}`);
-      const j = await r.json() as { ok: boolean; data?: { items: Inspection[]; total: number } };
-      if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    } finally { setLoading(false); }
+    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+    const j = await api<{ items: Inspection[]; total: number }>(`/api/admin/inspections?${p}`);
+    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
+    setLoading(false);
   }, [page]);
 
   useEffect(() => { void load(); }, [load]);
@@ -62,16 +57,14 @@ export default function AdminInspectionsPage() {
     e.preventDefault();
     if (!form.point_id.trim()) { alert('请选择服务点'); return; }
     setSaving(true);
-    try {
-      const r = await fetch('/api/admin/inspections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, images: images.map(i => i.key) }),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setShowForm(false); setForm({ point_id: '', result: 'pass', notes: '' }); setImages([]); void load(); }
-      else alert(j.error ?? '提交失败');
-    } finally { setSaving(false); }
+    const j = await api('/api/admin/inspections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, images: images.map(i => i.key) }),
+    });
+    setSaving(false);
+    if (j.ok) { setShowForm(false); setForm({ point_id: '', result: 'pass', notes: '' }); setImages([]); void load(); }
+    else alert(j.error ?? '提交失败');
   }
 
   const totalPages = Math.max(1, Math.ceil(total / 20));

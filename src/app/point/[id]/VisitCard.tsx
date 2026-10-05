@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Visit } from '@/lib/types';
 import type { Occupancy } from '@/lib/db';
 import { getRiderToken } from '@/lib/rider';
+import { api } from '@/lib/api-client';
 import QrImage from '@/components/qr';
 
 interface Props {
@@ -36,54 +37,49 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
   useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const refresh = useCallback(async () => {
-    const token = getRiderToken();
-    try {
-      const res = await fetch('/api/visits/active', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ point_id: pointId, rider_token: token }),
-      });
-      const json = await res.json() as { ok: boolean; data?: { visit: Visit | null } };
-      if (json.ok && json.data) setVisit(json.data.visit);
-    } catch { /* 离线时保持现状 */ }
+    const json = await api<{ visit: Visit | null }>('/api/visits/active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point_id: pointId, rider_token: getRiderToken() }),
+    });
+    // 离线或业务失败：保持现状
+    if (json.ok && json.data) setVisit(json.data.visit);
   }, [pointId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   async function handleReserve() {
     setBusy(true); setError('');
-    try {
-      const res = await fetch(`/api/points/${pointId}/reserve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rider_token: getRiderToken() }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string; data?: { visit: Visit; created: boolean } };
-      if (!json.ok || !json.data) { setError(json.error ?? '预约失败，请重试'); return; }
+    const json = await api<{ visit: Visit; created: boolean }>(`/api/points/${pointId}/reserve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rider_token: getRiderToken() }),
+    });
+    if (!json.ok) { setError(json.error ?? '预约失败，请重试'); }
+    else {
       setVisit(json.data.visit);
       // 用响应里的 created 标记做乐观更新，避免读到闭包里的旧 visit
       if (json.data.created && json.data.visit.status === 'reserved') {
         setOccupancy(o => ({ ...o, reserved: o.reserved + 1 }));
       }
-    } catch { setError('网络异常，请稍后重试'); }
-    finally { setBusy(false); }
+    }
+    setBusy(false);
   }
 
   async function handleCancel() {
     if (!visit) return;
     setBusy(true); setError('');
-    try {
-      const res = await fetch(`/api/visits/${visit.id}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rider_token: getRiderToken() }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string };
-      if (!json.ok) { setError(json.error ?? '取消失败'); return; }
+    const json = await api<{ visit: Visit | null }>(`/api/visits/${visit.id}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rider_token: getRiderToken() }),
+    });
+    if (!json.ok) setError(json.error ?? '取消失败');
+    else {
       setVisit(null);
       setOccupancy(o => ({ ...o, reserved: Math.max(0, o.reserved - 1) }));
-    } catch { setError('网络异常，请稍后重试'); }
-    finally { setBusy(false); }
+    }
+    setBusy(false);
   }
 
   const { in_store, reserved, capacity } = occupancy;
@@ -97,7 +93,7 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
 
   return (
     <section className="card anim-rise" style={{ marginBottom: '1rem', animationDelay: '300ms' }}>
-      <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.92rem', fontWeight: 900, letterSpacing: '0.16em', color: 'var(--red-800)' }}>
+      <h2 className="sub-title">
         预约进店
       </h2>
 

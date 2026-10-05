@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { ServicePoint } from '@/lib/types';
 import { SERVICE_TAGS } from '@/lib/types';
+import { api } from '@/lib/api-client';
 
 const BLANK = (): Partial<ServicePoint> => ({
   name: '', address: '', lat: 0, lng: 0, city: '', district: '', open_hours: '',
@@ -24,18 +25,18 @@ export default function AdminPointEditPage() {
   const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
-    fetch('/api/admin/cities')
-      .then(r => r.json() as Promise<{ ok: boolean; data?: { id: string; name: string }[] }>)
-      .then(j => { if (j.ok && j.data) setCities(j.data.filter(c => (c as { enabled?: number }).enabled !== 0)); })
-      .catch(() => { /* 城市列表不可用时仍可手填 */ });
+    // 城市列表不可用时仍可手填
+    void api<{ id: string; name: string }[]>('/api/admin/cities').then(j => {
+      if (j.ok && j.data) setCities(j.data.filter(c => (c as { enabled?: number }).enabled !== 0));
+    });
   }, []);
 
   useEffect(() => {
     if (isNew) return;
-    fetch(`/api/admin/points/${id}`)
-      .then(r => r.json() as Promise<{ ok: boolean; data?: ServicePoint }>)
-      .then(j => { if (j.ok && j.data) setForm(j.data); })
-      .finally(() => setLoading(false));
+    void api<ServicePoint>(`/api/admin/points/${id}`).then(j => {
+      if (j.ok && j.data) setForm(j.data);
+      setLoading(false);
+    });
   }, [id, isNew]);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
@@ -65,23 +66,19 @@ export default function AdminPointEditPage() {
       setError('名称和地址为必填项'); return;
     }
     setSaving(true); setError('');
-    try {
-      const url = isNew ? '/api/admin/points' : `/api/admin/points/${id}`;
-      const method = isNew ? 'POST' : 'PUT';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          lat: Number(form.lat) || 0,
-          lng: Number(form.lng) || 0,
-        }),
-      });
-      const j = await res.json() as { ok: boolean; error?: string };
-      if (!j.ok) { setError(j.error ?? '保存失败'); return; }
-      router.replace('/admin/points');
-    } catch { setError('网络异常，请稍后重试'); }
-    finally { setSaving(false); }
+    const url = isNew ? '/api/admin/points' : `/api/admin/points/${id}`;
+    const j = await api(url, {
+      method: isNew ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        lat: Number(form.lat) || 0,
+        lng: Number(form.lng) || 0,
+      }),
+    });
+    setSaving(false);
+    if (!j.ok) { setError(j.error ?? '保存失败'); return; }
+    router.replace('/admin/points');
   }
 
   if (loading) return (

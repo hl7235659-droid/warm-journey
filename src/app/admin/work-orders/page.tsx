@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import type { WorkOrder } from '@/lib/types';
 import { WORK_ORDER_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/types';
+import { api } from '@/lib/api-client';
 
 const STATUS_BADGE: Record<string, string> = {
   open: 'badge-amber', in_progress: 'badge-blue', resolved: 'badge-green', closed: 'badge-red',
@@ -26,13 +27,11 @@ export default function AdminWorkOrdersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ page: String(page), page_size: '20' });
-      if (status) p.set('status', status);
-      const r = await fetch(`/api/admin/work-orders?${p}`);
-      const j = await r.json() as { ok: boolean; data?: { items: WorkOrder[]; total: number } };
-      if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    } finally { setLoading(false); }
+    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+    if (status) p.set('status', status);
+    const j = await api<{ items: WorkOrder[]; total: number }>(`/api/admin/work-orders?${p}`);
+    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
+    setLoading(false);
   }, [page, status]);
 
   useEffect(() => { void load(); }, [load]);
@@ -42,16 +41,14 @@ export default function AdminWorkOrdersPage() {
   async function saveEdit() {
     if (!editing) return;
     setSaving(true);
-    try {
-      const r = await fetch(`/api/admin/work-orders/${editing.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: editStatus, resolution_note: editNote || undefined }),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setEditing(null); void load(); }
-      else alert(j.error ?? '更新失败');
-    } finally { setSaving(false); }
+    const j = await api(`/api/admin/work-orders/${editing.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: editStatus, resolution_note: editNote || undefined }),
+    });
+    setSaving(false);
+    if (j.ok) { setEditing(null); void load(); }
+    else alert(j.error ?? '更新失败');
   }
 
   const totalPages = Math.max(1, Math.ceil(total / 20));

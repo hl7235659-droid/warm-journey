@@ -3,6 +3,7 @@
 // 安全分层：提供商元数据（名称/地址/模型）落 localStorage；API Key 只进 sessionStorage，
 // 关掉标签页即消失，避免长期明文驻留在磁盘上被扩展/共用设备读取。
 import type { AiProvider, ProviderStore, ChatMessage, ChatSession } from '@/lib/ai/types';
+import { readItem, writeItem, readSessionItem, writeSessionItem } from '@/lib/local';
 
 const PROVIDERS_KEY = 'wj_ai_providers';
 const PROVIDER_KEYS = 'wj_ai_provider_keys';   // sessionStorage
@@ -12,26 +13,9 @@ export const MAX_SESSIONS = 20;
 export const MAX_MESSAGES_PER_SESSION = 60;
 export const MESSAGES_PER_REQUEST = 12; // 发送时只带最近 12 条
 
-function safeGet(key: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-function safeSet(key: string, value: string) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(key, value); } catch { /* 配额满等异常静默 */ }
-}
-function safeGetSession(key: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try { return sessionStorage.getItem(key); } catch { return null; }
-}
-function safeSetSession(key: string, value: string) {
-  if (typeof window === 'undefined') return;
-  try { sessionStorage.setItem(key, value); } catch { /* 隐私模式等异常静默 */ }
-}
-
 function readKeyMap(): Record<string, string> {
   try {
-    const parsed = JSON.parse(safeGetSession(PROVIDER_KEYS) ?? '{}') as Record<string, string>;
+    const parsed = JSON.parse(readSessionItem(PROVIDER_KEYS) ?? '{}') as Record<string, string>;
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
@@ -47,7 +31,7 @@ export function genLocalId(): string {
 // ---------- Providers ----------
 
 export function loadProviders(): ProviderStore {
-  const raw = safeGet(PROVIDERS_KEY);
+  const raw = readItem(PROVIDERS_KEY);
   if (!raw) return { providers: [], activeId: null };
   const keys = readKeyMap();
   try {
@@ -73,14 +57,14 @@ export function saveProviders(store: ProviderStore) {
   }
   const knownIds = new Set(store.providers.map((p) => p.id));
   for (const id of Object.keys(keys)) if (!knownIds.has(id)) delete keys[id];
-  safeSetSession(PROVIDER_KEYS, JSON.stringify(keys));
+  writeSessionItem(PROVIDER_KEYS, JSON.stringify(keys));
 
   // 落到 localStorage 的部分必须彻底剔除 apiKey 字段
   const meta = store.providers.map((p) => {
     const { apiKey: _omit, ...rest } = p;
     return rest;
   });
-  safeSet(PROVIDERS_KEY, JSON.stringify({ activeId: store.activeId, providers: meta }));
+  writeItem(PROVIDERS_KEY, JSON.stringify({ activeId: store.activeId, providers: meta }));
 }
 
 export function activeProvider(store: ProviderStore): AiProvider | null {
@@ -90,7 +74,7 @@ export function activeProvider(store: ProviderStore): AiProvider | null {
 // ---------- Sessions ----------
 
 export function loadSessions(): ChatSession[] {
-  const raw = safeGet(SESSIONS_KEY);
+  const raw = readItem(SESSIONS_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as ChatSession[];
@@ -107,7 +91,7 @@ export function saveSessions(sessions: ChatSession[]): ChatSession[] {
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_SESSIONS)
     .map((s) => ({ ...s, messages: s.messages.slice(-MAX_MESSAGES_PER_SESSION) }));
-  safeSet(SESSIONS_KEY, JSON.stringify(sorted));
+  writeItem(SESSIONS_KEY, JSON.stringify(sorted));
   return sorted;
 }
 

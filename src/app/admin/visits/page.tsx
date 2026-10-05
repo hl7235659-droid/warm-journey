@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import type { Visit, VisitFeedback } from '@/lib/types';
 import { VISIT_STATUS_LABELS } from '@/lib/types';
+import type { ChatResponse } from '@/lib/ai/types';
+import { api, ACTION_ERR } from '@/lib/api-client';
 
 const STATUS_BADGE: Record<string, string> = {
   reserved: 'badge-blue', in_store: 'badge-green', completed: 'badge-amber',
@@ -30,18 +32,15 @@ export default function AdminVisitsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ page_size: '50' });
-      if (status) p.set('status', status);
-      const r = await fetch(`/api/admin/visits?${p}`);
-      const j = await r.json() as { ok: boolean; data?: { items: Visit[]; total: number } };
-      if (j.ok && j.data) { setItems(j.data.items); }
-    } finally { setLoading(false); }
+    const p = new URLSearchParams({ page_size: '50' });
+    if (status) p.set('status', status);
+    const j = await api<{ items: Visit[]; total: number }>(`/api/admin/visits?${p}`);
+    if (j.ok && j.data) { setItems(j.data.items); }
+    setLoading(false);
   }, [status]);
 
   const loadFeedback = useCallback(async () => {
-    const r = await fetch('/api/admin/feedback?page_size=10');
-    const j = await r.json() as { ok: boolean; data?: { items: VisitFeedback[]; avg_rating: number | null } };
+    const j = await api<{ items: VisitFeedback[]; avg_rating: number | null }>('/api/admin/feedback?page_size=10');
     if (j.ok && j.data) { setFeedback(j.data.items); setAvgRating(j.data.avg_rating); }
   }, []);
 
@@ -50,14 +49,13 @@ export default function AdminVisitsPage() {
 
   async function forceCheckout(v: Visit) {
     if (!window.confirm(`确定让 ${v.point_name ?? '该点'} 的这位骑手（${v.rider_token.slice(0, 6)}…）强制离店？`)) return;
-    const r = await fetch(`/api/admin/visits/${v.id}`, {
+    const j = await api(`/api/admin/visits/${v.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'force_checkout' }),
     });
-    const j = await r.json() as { ok: boolean; error?: string };
     if (j.ok) void load();
-    else alert(j.error ?? '操作失败');
+    else alert(j.error ?? ACTION_ERR);
   }
 
   function duration(v: Visit) {
@@ -72,26 +70,26 @@ export default function AdminVisitsPage() {
   async function generateReport() {
     setReportLoading(true);
     setReportText(null);
+    const j = await api<{ items: VisitFeedback[] }>('/api/admin/feedback?page_size=200');
+    const all = (j.ok && j.data ? j.data.items : []);
+    const weekAgo = Date.now() / 1000 - 7 * 86400;
+    const week = all.filter(f => f.created_at >= weekAgo);
+
+    const totalW = week.length;
+    const avg = totalW > 0 ? Math.round(week.reduce((s, f) => s + f.rating, 0) / totalW * 10) / 10 : null;
+    const supportsCount = new Map<string, number>();
+    for (const f of week) for (const s of f.supports) supportsCount.set(s, (supportsCount.get(s) ?? 0) + 1);
+    const dist = [...supportsCount.entries()].sort((a, b) => b[1] - a[1]);
+    const suggestions = week.map(f => (f.suggestion || '').trim()).filter(Boolean).slice(0, 8);
+
+    const dataText =
+      `时间范围：近 7 天（${new Date(weekAgo * 1000).toLocaleDateString('zh-CN')} 至 ${new Date().toLocaleDateString('zh-CN')}）\n` +
+      `反馈总量：${totalW} 条${avg !== null ? `，平均评分 ${avg}（满分 5）` : ''}\n` +
+      `希望获得的支持分布（被勾选次数）：${dist.length > 0 ? dist.map(([t, n]) => `${t} ${n} 次`).join('、') : '暂无'}\n` +
+      (suggestions.length > 0 ? `近期建议原文（最多8条）：\n${suggestions.map(s => `- "${s.slice(0, 60)}"`).join('\n')}` : '近期无文字建议');
+
     try {
-      const r = await fetch('/api/admin/feedback?page_size=200');
-      const j = await r.json() as { ok: boolean; data?: { items: VisitFeedback[] } };
-      const all = j.data?.items ?? [];
-      const weekAgo = Date.now() / 1000 - 7 * 86400;
-      const week = all.filter(f => f.created_at >= weekAgo);
-
-      const totalW = week.length;
-      const avg = totalW > 0 ? Math.round(week.reduce((s, f) => s + f.rating, 0) / totalW * 10) / 10 : null;
-      const supportsCount = new Map<string, number>();
-      for (const f of week) for (const s of f.supports) supportsCount.set(s, (supportsCount.get(s) ?? 0) + 1);
-      const dist = [...supportsCount.entries()].sort((a, b) => b[1] - a[1]);
-      const suggestions = week.map(f => (f.suggestion || '').trim()).filter(Boolean).slice(0, 8);
-
-      const dataText =
-        `时间范围：近 7 天（${new Date(weekAgo * 1000).toLocaleDateString('zh-CN')} 至 ${new Date().toLocaleDateString('zh-CN')}）\n` +
-        `反馈总量：${totalW} 条${avg !== null ? `，平均评分 ${avg}（满分 5）` : ''}\n` +
-        `希望获得的支持分布（被勾选次数）：${dist.length > 0 ? dist.map(([t, n]) => `${t} ${n} 次`).join('、') : '暂无'}\n` +
-        (suggestions.length > 0 ? `近期建议原文（最多8条）：\n${suggestions.map(s => `- "${s.slice(0, 60)}"`).join('\n')}` : '近期无文字建议');
-
+      // /api/ai/chat 的成功响应把 text/mode 放在顶层（非 { ok, data } 信封），故这一处不走 api()
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,7 +99,7 @@ export default function AdminVisitsPage() {
           messages: [{ role: 'user', content: '请根据统计数据生成本周离店反馈运营周报。' }],
         }),
       });
-      const json = await res.json() as { ok: boolean; text?: string; error?: string; mode?: string };
+      const json = await res.json() as ChatResponse;
       setReportText(json.ok && json.text ? `${json.text}${json.mode === 'local' ? '\n\n（本地统计模式——未连接大模型）' : ''}` : (json.error ?? '生成失败，请稍后重试'));
     } catch {
       setReportText('生成失败：网络异常');

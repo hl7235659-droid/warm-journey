@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api-client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,17 +23,14 @@ export default function LoginPage() {
     e.preventDefault();
     if (!username || !password) { setError('请填写用户名和密码'); return; }
     setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string };
-      if (!json.ok) { setError(json.error ?? '用户名或密码错误'); return; }
-      router.replace('/admin/points');
-    } catch { setError('网络异常，请稍后重试'); }
-    finally { setLoading(false); }
+    const json = await api('/api/admin/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    setLoading(false);
+    if (!json.ok) { setError(json.error ?? '用户名或密码错误'); return; }
+    router.replace('/admin/points');
   }
 
   if (checking) return null;

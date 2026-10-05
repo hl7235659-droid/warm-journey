@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS } from '@/lib/types';
+import { api } from '@/lib/api-client';
 
 export default function AdminPointsPage() {
   const canWrite = useCanWrite();
@@ -17,15 +18,13 @@ export default function AdminPointsPage() {
 
   const fetch_ = useCallback(async () => {
     setLoading(true); setError('');
-    try {
-      const p = new URLSearchParams({ page: String(page), page_size: '20' });
-      if (q) p.set('q', q);
-      if (status) p.set('status', status);
-      const res = await fetch(`/api/admin/points?${p}`);
-      if (!res.ok) { setError('加载失败'); return; }
-      const j = await res.json() as { ok: boolean; data?: { items: ServicePoint[]; total: number } };
-      if (j.ok && j.data) { setPoints(j.data.items); setTotal(j.data.total); }
-    } catch { setError('网络异常'); } finally { setLoading(false); }
+    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+    if (q) p.set('q', q);
+    if (status) p.set('status', status);
+    const j = await api<{ items: ServicePoint[]; total: number }>(`/api/admin/points?${p}`);
+    if (j.ok) { setPoints(j.data.items); setTotal(j.data.total); }
+    else setError(j.error ?? '加载失败');
+    setLoading(false);
   }, [page, q, status]);
 
   useEffect(() => { void fetch_(); }, [fetch_]);

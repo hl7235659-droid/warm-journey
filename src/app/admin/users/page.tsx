@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAdmin } from '../admin-context';
 import type { AdminUser, AdminRole } from '@/lib/types';
+import type { ApiResponse } from '@/lib/types';
+import { api, ACTION_ERR } from '@/lib/api-client';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员', admin: '管理员', inspector: '巡检员',
@@ -23,9 +25,10 @@ export default function AdminUsersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // 403 需要渲染专属空态页（而非报错），故这一处保留裸 fetch 读 HTTP 状态码
       const r = await fetch('/api/admin/users');
       if (r.status === 403) { setForbidden(true); return; }
-      const j = await r.json() as { ok: boolean; data?: AdminUser[] };
+      const j = await r.json() as ApiResponse<AdminUser[]>;
       if (j.ok && j.data) setItems(j.data);
     } finally { setLoading(false); }
   }, []);
@@ -36,16 +39,14 @@ export default function AdminUsersPage() {
     e.preventDefault();
     setSaving(true);
     setError('');
-    try {
-      const r = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setShowForm(false); setForm({ username: '', password: '', role: 'inspector', display_name: '' }); void load(); }
-      else setError(j.error ?? '创建失败');
-    } finally { setSaving(false); }
+    const j = await api('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    setSaving(false);
+    if (j.ok) { setShowForm(false); setForm({ username: '', password: '', role: 'inspector', display_name: '' }); void load(); }
+    else setError(j.error ?? '创建失败');
   }
 
   // 重置密码用 type=password 的弹窗（window.prompt 明文可见，且无法粘贴密码管理器的强密码）
@@ -54,34 +55,29 @@ export default function AdminUsersPage() {
     if (!resetUser) return;
     if (resetPwd.length < 6) { alert('密码至少 6 位'); return; }
     setSaving(true);
-    try {
-      const r = await fetch(`/api/admin/users/${resetUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: resetPwd }),
-      });
-      const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setResetUser(null); setResetPwd(''); alert('密码已重置'); }
-      else alert(j.error ?? '操作失败');
-    } catch { alert('网络异常，请稍后重试'); }
-    finally { setSaving(false); }
+    const j = await api(`/api/admin/users/${resetUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: resetPwd }),
+    });
+    setSaving(false);
+    if (j.ok) { setResetUser(null); setResetPwd(''); alert('密码已重置'); }
+    else alert(j.error ?? ACTION_ERR);
   }
 
   async function changeRole(u: AdminUser, role: AdminRole) {
-    const r = await fetch(`/api/admin/users/${u.id}`, {
+    const j = await api(`/api/admin/users/${u.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     });
-    const j = await r.json() as { ok: boolean; error?: string };
     if (j.ok) void load();
-    else alert(j.error ?? '操作失败');
+    else alert(j.error ?? ACTION_ERR);
   }
 
   async function remove(u: AdminUser) {
     if (!window.confirm(`确定删除账号「${u.username}」？此操作不可恢复。`)) return;
-    const r = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' });
-    const j = await r.json() as { ok: boolean; error?: string };
+    const j = await api(`/api/admin/users/${u.id}`, { method: 'DELETE' });
     if (j.ok) void load();
     else alert(j.error ?? '删除失败');
   }

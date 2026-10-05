@@ -2,6 +2,7 @@
 // AI 提供商管理抽屉：增删改查/设为当前/连通性测试（配置仅存本机 localStorage）
 import { useState } from 'react';
 import type { AiProvider, ProviderStore } from '@/lib/ai/types';
+import type { ApiResponse } from '@/lib/types';
 
 interface Props {
   store: ProviderStore;
@@ -141,12 +142,13 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
     setTesting(true);
     setTestResult(null);
     try {
+      // 这里必须区分「连不上该地址」与「服务端返回业务错误」，故保留裸 fetch（BYOK 排错文案）
       const res = await fetch('/api/ai/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = (await res.json()) as { ok: boolean; error?: string; data?: { reply: string } };
+      const json = (await res.json()) as ApiResponse<{ reply: string }>;
       if (json.ok) {
         setTestResult({ ok: true, msg: json.data?.reply ?? '' });
       } else {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Report } from '@/lib/types';
 import { REPORT_CATEGORY_LABELS } from '@/lib/types';
+import { api } from '@/lib/api-client';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: '待处理', processing: '处理中', resolved: '已解决', closed: '已关闭',
@@ -20,29 +21,24 @@ export default function AdminReportsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const p = new URLSearchParams({ page: String(page), page_size: '20' });
-      if (status) p.set('status', status);
-      const r = await fetch(`/api/admin/reports?${p}`);
-      const j = await r.json() as { ok: boolean; data?: { items: Report[]; total: number } };
-      if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
-    } finally { setLoading(false); }
+    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+    if (status) p.set('status', status);
+    const j = await api<{ items: Report[]; total: number }>(`/api/admin/reports?${p}`);
+    if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
+    setLoading(false);
   }, [page, status]);
 
   useEffect(() => { void load(); }, [load]);
 
   async function createWorkOrder(reportId: string) {
     // API 入参是 report_id（此前误传 source_report_id，zod 静默丢弃导致工单永远关联不上上报）
-    try {
-      const res = await fetch('/api/admin/work-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '处理上报', report_id: reportId, priority: 'normal' }),
-      });
-      const j = await res.json() as { ok: boolean; error?: string };
-      if (j.ok) { alert('工单已创建'); void load(); }
-      else alert(j.error ?? '创建失败');
-    } catch { alert('网络异常，请稍后重试'); }
+    const j = await api('/api/admin/work-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '处理上报', report_id: reportId, priority: 'normal' }),
+    });
+    if (j.ok) { alert('工单已创建'); void load(); }
+    else alert(j.error ?? '创建失败');
   }
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
