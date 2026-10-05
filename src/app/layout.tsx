@@ -1,6 +1,8 @@
 export const runtime = 'edge';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import SWRegister from '@/components/sw-register';
+import AiDock from '@/components/ai/AiDock';
 
 export const metadata: Metadata = {
   title: '暖途同行 — 骑手服务点查询',
@@ -32,7 +34,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="icon" href="/images/logo-mark.png" type="image/png" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <AiDock />
+        <SWRegister />
+      </body>
     </html>
   );
 }
