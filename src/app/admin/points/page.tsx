@@ -1,46 +1,42 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useCanWrite } from '../admin-context';
-import type { ServicePoint } from '@/lib/types';
+import { EmptyRow, LIST_PAGE_SIZE, Pager, SkeletonRows, useAdminList } from '@/components/admin/list';
+import type { ListResp } from '@/components/admin/list';
+import type { PagedResult, ServicePoint } from '@/lib/types';
 import { STATUS_LABELS } from '@/lib/types';
 import { api } from '@/lib/api-client';
 
+const STATUS_BADGE: Record<ServicePoint['status'], string> = {
+  open: 'badge-green', closed: 'badge-red', temp_closed: 'badge-amber',
+};
+
 export default function AdminPointsPage() {
   const canWrite = useCanWrite();
-  const [points, setPoints] = useState<ServicePoint[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
-  const fetch_ = useCallback(async () => {
-    setLoading(true); setError('');
-    const p = new URLSearchParams({ page: String(page), page_size: '20' });
+  const fetchPoints = useCallback(async (page: number): Promise<ListResp<ServicePoint>> => {
+    const p = new URLSearchParams({ page: String(page), page_size: String(LIST_PAGE_SIZE) });
     if (q) p.set('q', q);
     if (status) p.set('status', status);
-    const j = await api<{ items: ServicePoint[]; total: number }>(`/api/admin/points?${p}`);
-    if (j.ok) { setPoints(j.data.items); setTotal(j.data.total); }
-    else setError(j.error ?? '加载失败');
-    setLoading(false);
-  }, [page, q, status]);
+    const j = await api<PagedResult<ServicePoint>>(`/api/admin/points?${p}`);
+    if (!j.ok) return { ok: false, error: j.error };
+    return { ok: true, data: j.data.items, total: j.data.total };
+  }, [q, status]);
 
-  useEffect(() => { void fetch_(); }, [fetch_]);
-
-  const totalPages = Math.max(1, Math.ceil(total / 20));
-  const statusBadge = { open: 'badge-green', closed: 'badge-red', temp_closed: 'badge-amber' };
+  const { items, page, totalPages, loading, error, setPage } = useAdminList(fetchPoints);
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>服务点管理</h1>
+      <div className="page-head">
+        <h1 className="page-title">服务点管理</h1>
         {canWrite && <a href="/admin/points/new" className="btn btn-primary btn-sm">+ 新增</a>}
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.625rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div className="field" style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
         <input className="input" style={{ flex: '1 1 200px', maxWidth: '320px' }}
           placeholder="搜索名称或地址…" value={q}
           onChange={e => { setQ(e.target.value); setPage(1); }} />
@@ -54,65 +50,37 @@ export default function AdminPointsPage() {
         </select>
       </div>
 
-      {error && <p className="field-error" style={{ marginBottom: '1rem' }}>{error}</p>}
+      {error && <p className="field-error form-error">{error}</p>}
 
       <div className="table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+        <table>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-              {['名称', '地址', '营业时间', '状态', '已核验', '操作'].map(h => (
-                <th key={h} style={{ padding: '0.625rem 0.75rem', textAlign: 'left', fontWeight: 600,
-                  color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>{h}</th>
-              ))}
+            <tr>
+              {['名称', '地址', '营业时间', '状态', '已核验', '操作'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              [1,2,3,4].map(i => (
-                <tr key={i}>
-                  {[1,2,3,4,5,6].map(j => (
-                    <td key={j} style={{ padding: '0.75rem' }}>
-                      <div className="skeleton" style={{ height: '18px', borderRadius: '4px' }} />
-                    </td>
-                  ))}
+            {loading ? <SkeletonRows cols={6} /> : items.length === 0 ? <EmptyRow cols={6} text="暂无数据" /> :
+              items.map(p => (
+                <tr key={p.id}>
+                  <td className="td-name">
+                    <a href={`/admin/points/${p.id}`} className="cell-link">{p.name}</a>
+                  </td>
+                  <td className="td-muted ellipsis" style={{ maxWidth: '200px' }}>{p.address}</td>
+                  <td className="td-muted td-nowrap">{p.open_hours}</td>
+                  <td><span className={`badge ${STATUS_BADGE[p.status]}`}>{STATUS_LABELS[p.status]}</span></td>
+                  <td style={{ textAlign: 'center' }}>{p.verified_at ? '✅' : '—'}</td>
+                  <td className="td-nowrap">
+                    {canWrite && <a href={`/admin/points/${p.id}`} className="btn btn-ghost btn-sm" style={{ marginRight: '0.375rem' }}>编辑</a>}
+                    <a href={`/admin/points/${p.id}/history`} className="btn btn-ghost btn-sm">历史</a>
+                  </td>
                 </tr>
-              ))
-            ) : points.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                暂无数据
-              </td></tr>
-            ) : points.map(p => (
-              <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.625rem 0.75rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                  <a href={`/admin/points/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>{p.name}</a>
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '200px',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address}</td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.open_hours}</td>
-                <td style={{ padding: '0.625rem 0.75rem' }}>
-                  <span className={`badge ${statusBadge[p.status]}`}>{STATUS_LABELS[p.status]}</span>
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', textAlign: 'center' }}>
-                  {p.verified_at ? '✅' : '—'}
-                </td>
-                <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  {canWrite && <a href={`/admin/points/${p.id}`} className="btn btn-ghost btn-sm" style={{ marginRight: '0.375rem' }}>编辑</a>}
-                  <a href={`/admin/points/${p.id}/history`} className="btn btn-ghost btn-sm">历史</a>
-                </td>
-              </tr>
-            ))}
+              ))}
           </tbody>
         </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← 上一页</button>
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{page} / {totalPages}</span>
-          <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一页 →</button>
-        </div>
-      )}
+      <Pager page={page} totalPages={totalPages} onPage={setPage} />
     </>
   );
 }
