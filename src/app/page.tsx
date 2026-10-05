@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ServicePoint, PointStatus } from '@/lib/types';
 import { STATUS_LABELS, STATUS_SEALS, POINT_STATUSES, SERVICE_TAGS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { api } from '@/lib/api-client';
+import type { PointStats } from '@/lib/db';
 import { LS_KEYS, readList, writeList } from '@/lib/local';
 import { Branch, Corners, Swoosh } from '@/components/ornaments';
 
@@ -22,24 +23,6 @@ function formatDist(km: number) {
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
 
-function CountUp({ value }: { value: number }) {
-  const [display, setDisplay] = useState(0);
-  useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setDisplay(value); return; }
-    const t0 = performance.now();
-    const dur = 700;
-    let raf = 0;
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / dur);
-      setDisplay(Math.round(value * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return <>{display}</>;
-}
-
 function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
   point: ServicePoint; userLat: number | null; userLng: number | null; idx: number;
   fav: boolean; onToggleFav: (id: string) => void;
@@ -51,7 +34,7 @@ function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
   const delay = Math.min(idx, 6) * 70;
 
   return (
-    <div className="reveal" style={{ animationDelay: `${delay}ms`, position: 'relative' }}>
+    <div className="anim-rise" style={{ animationDelay: `${delay}ms`, position: 'relative' }}>
       {/* 收藏按钮与链接是兄弟元素，避免 <a> 内嵌套交互元素 */}
       <button
         type="button"
@@ -116,8 +99,8 @@ export default function HomePage() {
   const [serviceFilter, setServiceFilter] = useState('');
   const [favs, setFavs] = useState<string[]>([]);
   const [favOnly, setFavOnly] = useState(false);
-  // 请求序号：慢响应不会覆盖新结果
-  const seqRef = useRef(0);
+  // 三枚圆章的全量口径：由服务端聚合，与当前筛选和分页无关
+  const [meta, setMeta] = useState<PointStats | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 300);
@@ -153,8 +136,7 @@ export default function HomePage() {
     });
   }
 
-  const fetchPoints = useCallback(async () => {
-    const seq = ++seqRef.current;
+  const fetchPoints = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setLoadError(false);
     const params = new URLSearchParams();
@@ -163,40 +145,32 @@ export default function HomePage() {
     if (cityFilter) params.set('city', cityFilter);
     if (serviceFilter) params.set('service', serviceFilter);
     params.set('page_size', '50');
-    const json = await api<{ items: ServicePoint[]; total: number }>(`/api/points?${params}`);
-    if (seq !== seqRef.current) return; // 已有更新的请求，丢弃本次结果
+    const json = await api<{ items: ServicePoint[]; total: number; meta: PointStats }>(
+      `/api/points?${params}`, { signal },
+    );
+    // 已被更新的筛选取代（effect 卸载时 abort）：慢响应回来也不再写状态
+    if (signal?.aborted) return;
     if (json.ok && json.data) {
       let items = json.data.items;
       if (userLat !== null && userLng !== null) {
         items = [...items].sort((a, b) =>
-          haversine(userLat, userLng, a.lat, a.lng) - haversine(userLat, userLng, b.lat, b.lng)
+          haversine(userLat, userLng, a.lat, b.lng) - haversine(userLat, userLng, b.lat, b.lng)
         );
       }
       setPoints(items);
       setTotal(json.data.total);
+      setMeta(json.data.meta);
     } else {
       setLoadError(true);
     }
     setLoading(false);
   }, [debouncedQ, statusFilter, cityFilter, serviceFilter, userLat, userLng]);
 
-  useEffect(() => { void fetchPoints(); }, [fetchPoints]);
-
-  // 滚动揭示：进入视口的卡片播放入场动画
   useEffect(() => {
-    const els = Array.from(document.querySelectorAll('.reveal:not(.is-visible)'));
-    if (!els.length) return;
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('is-visible');
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.12 });
-    els.forEach(el => io.observe(el));
-    return () => io.disconnect();
-  }, [points, loading]);
+    const ac = new AbortController();
+    void fetchPoints(ac.signal);
+    return () => ac.abort();
+  }, [fetchPoints]);
 
   function requestLocation() {
     if (!navigator.geolocation) { setGeoError('浏览器不支持定位'); return; }
@@ -206,12 +180,6 @@ export default function HomePage() {
       { timeout: 8000 },
     );
   }
-
-  const stats = useMemo(() => {
-    const openCount = points.filter(p => p.status === 'open').length;
-    const serviceTypes = new Set(points.flatMap(p => p.services)).size;
-    return { openCount, serviceTypes };
-  }, [points]);
 
   const visiblePoints = favOnly ? points.filter(p => favs.includes(p.id)) : points;
 
@@ -245,20 +213,20 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 圆章数据组（红带内） */}
+        {/* 圆章数据组（红带内）：全量口径，不随筛选漂移 */}
         <div className="hero-stats">
           <div className="stat-seal anim-pop" style={{ animationDelay: '320ms' }}>
-            <b>{loading ? '–' : <CountUp value={total} />}</b>
+            <b>{loading ? '–' : (meta?.total ?? '–')}</b>
             <span>服务站点</span>
           </div>
           <span className="chev anim-rise" style={{ animationDelay: '420ms' }} aria-hidden="true">❯❯</span>
           <div className="stat-seal anim-pop" style={{ animationDelay: '460ms' }}>
-            <b>{loading ? '–' : <CountUp value={stats.openCount} />}</b>
+            <b>{loading ? '–' : (meta?.open_count ?? '–')}</b>
             <span>当前开放</span>
           </div>
           <span className="chev anim-rise" style={{ animationDelay: '560ms' }} aria-hidden="true">❯❯</span>
           <div className="stat-seal anim-pop" style={{ animationDelay: '600ms' }}>
-            <b>{loading ? '–' : <CountUp value={stats.serviceTypes} />}</b>
+            <b>{loading ? '–' : (meta?.service_types ?? '–')}</b>
             <span>服务项目</span>
           </div>
         </div>

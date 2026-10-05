@@ -45,6 +45,28 @@ export async function listPoints(
   };
 }
 
+// 首页三枚圆章的全量口径。B4：此前前端在"当前筛选 + 当前页"的 items 上现算开放数与
+// 服务类型数，却与服务端下发的 total 混排——筛选一变，声称是平台规模的数字就跟着漂移。
+// services 是 JSON 数组文本，去重标签在 SQL 里拆不动，一次全表取两列回来算。
+export interface PointStats {
+  total: number;
+  open_count: number;
+  service_types: number;
+}
+
+export async function getPointStats(db: D1Database): Promise<PointStats> {
+  const rows = await db.prepare('SELECT status, services FROM service_points')
+    .all<{ status: string; services: string }>();
+  const items = rows.results ?? [];
+  const tags = new Set<string>();
+  let openCount = 0;
+  for (const r of items) {
+    if (r.status === 'open') openCount++;
+    for (const t of parseJsonArray(r.services, 'service_points.services')) tags.add(t);
+  }
+  return { total: items.length, open_count: openCount, service_types: tags.size };
+}
+
 export async function getPoint(db: D1Database, id: string) {
   const row = await db.prepare('SELECT * FROM service_points WHERE id = ?')
     .bind(id).first<ServicePoint & { services: string; admission: string }>();
@@ -505,22 +527,6 @@ export async function getAdminStats(db: D1Database): Promise<AdminStats> {
     in_store_now, visits_today,
     avg_rating: rating?.a ? Math.round(rating.a * 10) / 10 : null,
   };
-}
-
-// 热力图数据：每个点位的坐标 + 近 90 天上报数（权重）
-// 聚合 SQL 一次算完，避免相关子查询逐行 COUNT 的 N+1 退化
-export async function getHeatmapData(db: D1Database) {
-  const since = unixNow() - 90 * 86400;
-  const rows = await db.prepare(
-    `SELECT sp.id, sp.name, sp.lat, sp.lng, sp.status, COALESCE(rc.n, 0) as report_count
-     FROM service_points sp
-     LEFT JOIN (
-       SELECT point_id, COUNT(*) as n FROM reports WHERE created_at >= ? GROUP BY point_id
-     ) rc ON rc.point_id = sp.id`,
-  ).bind(since).all<{
-    id: string; name: string; lat: number; lng: number; status: string; report_count: number;
-  }>();
-  return rows.results ?? [];
 }
 
 // ---------------------------------------------------------------------------
