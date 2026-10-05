@@ -2,7 +2,7 @@ export function Branch({ flip }: { flip?: boolean }) {
   return (
     <img
       className={`branch${flip ? ' branch-flip' : ''}`}
-      src="/images/ornament-branch.png"
+      src="/images/ornament-branch.webp"
       alt=""
       aria-hidden="true"
     />
@@ -13,8 +13,8 @@ export function Corners({ bottom }: { bottom?: boolean }) {
   const pos = bottom ? ['corner-bl', 'corner-br'] : ['corner-tl', 'corner-tr'];
   return (
     <>
-      <img className={`corner ${pos[0]}`} src="/images/corner-flourish.png" alt="" aria-hidden="true" />
-      <img className={`corner ${pos[1]}`} src="/images/corner-flourish.png" alt="" aria-hidden="true" />
+      <img className={`corner ${pos[0]}`} src="/images/corner-flourish.webp" alt="" aria-hidden="true" />
+      <img className={`corner ${pos[1]}`} src="/images/corner-flourish.webp" alt="" aria-hidden="true" />
     </>
   );
 }

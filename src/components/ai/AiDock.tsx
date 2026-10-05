@@ -303,7 +303,7 @@ export default function AiDock() {
         aria-label={open ? '收起小暖' : '打开小暖 AI 助手'}
         aria-expanded={open}
       >
-        {open ? '✕' : <img src="/images/xiaonuan-head.png" alt="" aria-hidden="true" />}
+        {open ? '✕' : <img src="/images/xiaonuan-head.webp" alt="" aria-hidden="true" />}
       </button>
 
       {open && (

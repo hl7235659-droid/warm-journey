@@ -8,6 +8,6 @@
   "theme_color": "#8C1F28",
   "orientation": "portrait",
   "icons": [
-    { "src": "/images/logo-mark.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/images/logo-mark-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

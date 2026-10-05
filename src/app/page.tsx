@@ -248,7 +248,7 @@ export default function HomePage() {
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
             <span className="band-eyebrow">新就业群体服务 · 公益项目</span>
             <h1 className="band-title">
-              <img src="/images/title-calligraphy.png" alt="暖途同行" width={320} height={96} fetchPriority="high" />
+              <img src="/images/title-calligraphy.webp" alt="暖途同行" width={320} height={107} fetchPriority="high" />
             </h1>
             <Swoosh />
           </div>

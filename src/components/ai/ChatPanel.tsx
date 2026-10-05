@@ -82,7 +82,7 @@ export default function ChatPanel({ messages, sending, hasProvider, sessionPoint
         {messages.length === 0 && !sending && (
           <div className="aidock-empty">
             <span className="aidock-empty-avatar" aria-hidden="true">
-              <img src="/images/xiaonuan-avatar.png" alt="" />
+              <img src="/images/xiaonuan-avatar.webp" alt="" />
             </span>
             <div className="aidock-empty-title">有什么可以帮你？</div>
             <p className="aidock-empty-sub">
@@ -108,7 +108,7 @@ export default function ChatPanel({ messages, sending, hasProvider, sessionPoint
             <div key={`${m.ts}-ai`} className="aidock-row">
               <div className="aidock-ai-block">
                 <div className="aidock-ai-head">
-                  <span className="aidock-avatar" aria-hidden="true"><img src="/images/xiaonuan-avatar.png" alt="" /></span>
+                  <span className="aidock-avatar" aria-hidden="true"><img src="/images/xiaonuan-avatar.webp" alt="" /></span>
                   <span className="aidock-ai-name">小暖</span>
                   {m.mode === 'local' && <span className="aidock-mode-badge">离线</span>}
                 </div>
@@ -132,7 +132,7 @@ export default function ChatPanel({ messages, sending, hasProvider, sessionPoint
           <div className="aidock-row">
             <div className="aidock-ai-block">
               <div className="aidock-ai-head">
-                <span className="aidock-avatar" aria-hidden="true"><img src="/images/xiaonuan-avatar.png" alt="" /></span>
+                <span className="aidock-avatar" aria-hidden="true"><img src="/images/xiaonuan-avatar.webp" alt="" /></span>
                 <span className="aidock-ai-name">小暖</span>
               </div>
               <div className="aidock-typing" aria-label="小暖正在输入">

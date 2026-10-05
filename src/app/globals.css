@@ -123,7 +123,7 @@ html {
 }
 
 body {
-  background: url('/images/desk-bg.png') center / cover fixed no-repeat #4a3413;
+  background: url('/images/desk-bg.webp') center / cover fixed no-repeat #4a3413;
   color: var(--text-body);
   font-family: var(--font-serif);
   line-height: 1.6;
@@ -132,7 +132,7 @@ body {
 }
 @media (prefers-color-scheme: dark) {
   body {
-    background: url('/images/desk-bg.png') center / cover fixed no-repeat #1a120b;
+    background: url('/images/desk-bg.webp') center / cover fixed no-repeat #1a120b;
     filter: none;
   }
   body::before {
@@ -219,7 +219,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 ───────────────────────────────────────────── */
 .band {
   position: relative;
-  background: url('/images/band-texture.png') center / cover no-repeat var(--red-800);
+  background: url('/images/band-texture.webp') center / cover no-repeat var(--red-800);
   border-bottom: 3px solid var(--gold-600);
   color: #F6EBD9;
   padding: 0.875rem 1.25rem 1.75rem;
@@ -809,7 +809,7 @@ a.card:active {
 .band-foot {
   position: relative;
   margin-top: 2.25rem;
-  background: url('/images/band-texture.png') center / cover no-repeat var(--red-800);
+  background: url('/images/band-texture.webp') center / cover no-repeat var(--red-800);
   border-top: 3px solid var(--gold-600);
   color: var(--gold-300);
   text-align: center;

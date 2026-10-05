@@ -113,7 +113,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
       <main className="page" style={{ paddingTop: '1.125rem', paddingBottom: '2rem' }}>
         {/* 装裱封面 */}
         <div className="point-cover detail-cover anim-rise" style={{ animationDelay: '200ms' }}>
-          <img src={cover} alt={isPhoto ? `${point.name} 实景` : `${point.name} 插画示意`} />
+          <img src={cover} alt={isPhoto ? `${point.name} 实景` : `${point.name} 插画示意`} width={800} height={450} />
         </div>
 
         {/* Navigate CTA */}
