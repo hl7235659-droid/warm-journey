@@ -1,4 +1,7 @@
-import type { ServicePoint, Report, WorkOrder, Inspection, AdminUser, PointHistory } from '@/lib/types';
+import type {
+  ServicePoint, Report, WorkOrder, Inspection, AdminUser, PointHistory,
+  KnowledgeCategory, ReportCategory, ReportStatus,
+} from '@/lib/types';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
 
 export type D1Env = { DB: D1Database };
@@ -169,9 +172,10 @@ export async function getReportByCode(db: D1Database, code: string) {
   ).bind(normalized).first<ReportStatusPublic>();
 }
 
+// category/status 由 schema.sql 的 CHECK 约束保证落在领域枚举内
 export interface ReportStatusPublic {
-  id: string; point_id: string; category: string;
-  status: string; created_at: number; point_name?: string;
+  id: string; point_id: string; category: ReportCategory;
+  status: ReportStatus; created_at: number; point_name?: string;
 }
 
 export async function listReports(
@@ -886,7 +890,7 @@ export async function listVisitFeedback(
 // AI 助手（知识库 / 动态上下文 / 口碑聚合 / 限流）
 // ---------------------------------------------------------------------------
 
-export type AiKnowledgeCategory = 'rights' | 'channel' | 'faq' | 'notice';
+export type AiKnowledgeCategory = KnowledgeCategory;
 
 export interface AiKnowledge {
   id: string;

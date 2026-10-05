@@ -6,7 +6,7 @@ import {
 import { matchSiteHelp } from '@/lib/ai/site-help';
 import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
 import { normalizeMessages } from '@/lib/ai/truncate';
-import { extractAction } from '@/lib/ai/actions';
+import { extractAction, IdSchema } from '@/lib/ai/actions';
 import { localFallback } from '@/lib/ai/fallback';
 import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
 import { requireAdmin } from '@/lib/auth';
@@ -34,7 +34,7 @@ const BodySchema = z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string().max(8000),
   })).min(1).max(30),
-  pointId: z.string().regex(/^[a-z0-9]{4,32}$/).optional(),
+  pointId: IdSchema.optional(),
   context: z.object({
     now: z.string().max(60).optional(),
     weather: z.object({

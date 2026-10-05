@@ -1,5 +1,6 @@
 import { listKnowledge, createKnowledge } from '@/lib/db';
 import { withAdmin, readJson, isResponse, pageParams } from '@/lib/http';
+import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -17,7 +18,7 @@ export const GET = withAdmin(async ({ req, env }) => {
 });
 
 const KnowledgeSchema = z.object({
-  category: z.enum(['rights', 'channel', 'faq', 'notice']),
+  category: z.enum(KNOWLEDGE_CATEGORIES),
   title: z.string().min(1).max(60),
   content: z.string().min(1).max(2000),
   tags: z.array(z.string().min(1).max(20)).max(10).default([]),

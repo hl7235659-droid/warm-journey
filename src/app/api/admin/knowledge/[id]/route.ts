@@ -1,11 +1,12 @@
 import { updateKnowledge, deleteKnowledge } from '@/lib/db';
 import { withAdmin, readJson, isResponse } from '@/lib/http';
+import { ID_RE, KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
 export const runtime = 'edge';
 
 const UpdateSchema = z.object({
-  category: z.enum(['rights', 'channel', 'faq', 'notice']).optional(),
+  category: z.enum(KNOWLEDGE_CATEGORIES).optional(),
   title: z.string().min(1).max(60).optional(),
   content: z.string().min(1).max(2000).optional(),
   tags: z.array(z.string().min(1).max(20)).max(10).optional(),
@@ -13,7 +14,7 @@ const UpdateSchema = z.object({
 });
 
 export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
-  if (!/^[a-z0-9]{4,32}$/.test(id)) {
+  if (!ID_RE.test(id)) {
     return Response.json({ ok: false, error: 'id 格式无效' }, { status: 422 });
   }
 
@@ -29,7 +30,7 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
 }, { roles: ['super_admin', 'admin'] });
 
 export const DELETE = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
-  if (!/^[a-z0-9]{4,32}$/.test(id)) {
+  if (!ID_RE.test(id)) {
     return Response.json({ ok: false, error: 'id 格式无效' }, { status: 422 });
   }
 

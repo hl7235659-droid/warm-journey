@@ -1,13 +1,25 @@
 // Core domain types for 暖途同行
 
-export type PointStatus = 'open' | 'closed' | 'temp_closed';
-export type ReportCategory = 'closed' | 'info_wrong' | 'facility' | 'safety' | 'other';
+// 领域枚举的唯一来源：const 数组（供 z.enum / includes / 遍历）+ 派生联合类型。
+export const POINT_STATUSES = ['open', 'closed', 'temp_closed'] as const;
+export const REPORT_CATEGORIES = ['closed', 'info_wrong', 'facility', 'safety', 'other'] as const;
+export const KNOWLEDGE_CATEGORIES = ['rights', 'channel', 'faq', 'notice'] as const;
+
+export type PointStatus = typeof POINT_STATUSES[number];
+export type ReportCategory = typeof REPORT_CATEGORIES[number];
+export type KnowledgeCategory = typeof KNOWLEDGE_CATEGORIES[number];
 export type ReportStatus = 'pending' | 'processing' | 'resolved' | 'closed';
 export type WorkOrderStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type InspectionResult = 'pass' | 'fail' | 'partial';
 export type AdminRole = 'super_admin' | 'admin' | 'inspector';
 export type VisitStatus = 'reserved' | 'in_store' | 'completed' | 'cancelled' | 'expired';
+
+// DB 主键形态（唯一来源）：真实数据为 16 位小写 hex（randomblob(8)），seed 数据为 point001 风格
+export const ID_RE = /^[a-z0-9]{4,32}$/;
+
+// 单张上传图片体积上限：客户端预检与服务端拒绝共用（文案里的 "5MB" 随此值同步）
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 export interface ServicePoint {
   id: string;
@@ -153,6 +165,13 @@ export const STATUS_LABELS: Record<PointStatus, string> = {
   open: '开放中',
   closed: '已关闭',
   temp_closed: '临时关闭',
+};
+
+// 状态圆章配色（国风印章类名）：卡片与详情页共用，避免同一映射各抄一份
+export const STATUS_SEALS: Record<PointStatus, string> = {
+  open: 'seal-jade',
+  closed: 'seal-ink',
+  temp_closed: 'seal-gold',
 };
 
 export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {

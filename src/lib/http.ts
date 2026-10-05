@@ -2,7 +2,7 @@
 // 所有 admin 路由必须经 withAdmin 包裹，从机制上杜绝漏写鉴权 / 角色不一致。
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { requireAdmin, requireActiveAdmin, requireRole, type AdminPayload } from '@/lib/auth';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 export interface CloudflareEnvLike {
   DB: D1Database;
@@ -87,7 +87,6 @@ export function getClientIp(req: Request): string {
   return req.headers.get('cf-connecting-ip')?.trim() || 'local';
 }
 
-// 骑手匿名标识的统一校验（64-bit 随机 hex）
-export function isValidRiderToken(token: string): boolean {
-  return /^[0-9a-f]{16,32}$/.test(token);
-}
+// 骑手匿名标识（64-bit 随机 hex）：6 个骑手侧写路由共用同一校验源。
+// 客户端自检见 @/lib/rider（用途不同：校验存量 token 是否仍可用）。
+export const RiderTokenSchema = z.string().regex(/^[0-9a-f]{16,32}$/, '无效的骑手标识');

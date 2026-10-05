@@ -1,12 +1,12 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { createVisitFeedback, checkRateLimit } from '@/lib/db';
-import { readJson, isResponse, getClientIp } from '@/lib/http';
+import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
 
 const FeedbackSchema = z.object({
-  rider_token: z.string().regex(/^[0-9a-f]{16,32}$/),
+  rider_token: RiderTokenSchema,
   rating: z.number().int().min(1).max(5),
   supports: z.array(z.string().max(20)).max(12).default([]),
   suggestion: z.string().max(500).default(''),

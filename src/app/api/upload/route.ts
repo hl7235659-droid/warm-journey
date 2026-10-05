@@ -1,10 +1,10 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { checkRateLimit, recordUpload } from '@/lib/db';
 import { getClientIp, jsonErr } from '@/lib/http';
+import { MAX_UPLOAD_BYTES } from '@/lib/types';
 
 export const runtime = 'edge';
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const EXT_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   if (!ext) {
     return jsonErr('仅支持 JPG / PNG / WebP / GIF 图片', 415);
   }
-  if (file.size > MAX_SIZE) {
+  if (file.size > MAX_UPLOAD_BYTES) {
     return jsonErr('图片不能超过 5MB', 413);
   }
 

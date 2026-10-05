@@ -1,19 +1,17 @@
 // 命令操作系统：协议文本（教模型输出）+ zod 白名单校验 + 文本提取
 import { z } from 'zod';
+import { ID_RE, REPORT_CATEGORIES, KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import type { AiAction } from './types';
 
-// 数据库主键：真实数据为 16 位小写 hex（randomblob(8)），seed 数据为 point001 风格
-const idStr = z.string().regex(/^[a-z0-9]{4,32}$/, 'id 格式无效');
+// 数据库主键形态见 ID_RE（@/lib/types）
+export const IdSchema = z.string().regex(ID_RE, 'id 格式无效');
 const name128 = z.string().min(1).max(64);
-
-const REPORT_CATEGORIES = ['closed', 'info_wrong', 'facility', 'safety', 'other'] as const;
-const KNOWLEDGE_CATEGORIES = ['rights', 'channel', 'faq', 'notice'] as const;
 
 // 逐类型 params 形状（判别式联合：类型白名单 + 参数形状双重校验）
 export const ActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('navigate'),
-    params: z.object({ pointId: idStr }),
+    params: z.object({ pointId: IdSchema }),
   }),
   z.object({
     type: z.literal('filter'),
@@ -23,19 +21,19 @@ export const ActionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('reserve'),
-    params: z.object({ pointId: idStr }),
+    params: z.object({ pointId: IdSchema }),
   }),
   z.object({
     type: z.literal('report'),
-    params: z.object({ pointId: idStr.optional(), category: z.enum(REPORT_CATEGORIES).optional() }),
+    params: z.object({ pointId: IdSchema.optional(), category: z.enum(REPORT_CATEGORIES).optional() }),
   }),
   z.object({
     type: z.literal('route'),
-    params: z.object({ pointId: idStr }),
+    params: z.object({ pointId: IdSchema }),
   }),
   z.object({
     type: z.literal('feedback'),
-    params: z.object({ visitId: idStr }),
+    params: z.object({ visitId: IdSchema }),
   }),
   z.object({
     type: z.literal('list_knowledge'),

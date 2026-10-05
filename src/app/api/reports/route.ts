@@ -1,13 +1,14 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { createReport, getPoint, maybeAutoCreateWorkOrder, checkRateLimit, filterOwnedUploads } from '@/lib/db';
 import { readJson, isResponse, getClientIp } from '@/lib/http';
+import { REPORT_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
 export const runtime = 'edge';
 
 const ReportSchema = z.object({
   point_id: z.string().min(1),
-  category: z.enum(['closed', 'info_wrong', 'facility', 'safety', 'other']),
+  category: z.enum(REPORT_CATEGORIES),
   content:  z.string().min(5).max(500),
   // 只允许 /api/upload 签发的 key
   images:   z.array(z.string().regex(/^img\/\d{4}-\d{2}\/[0-9a-f]{16}\.(jpg|png|webp|gif)$/)).max(3).default([]),

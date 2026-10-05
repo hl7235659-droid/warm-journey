@@ -1,12 +1,12 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { confirmPoint, getPoint, checkRateLimit } from '@/lib/db';
-import { readJson, isResponse, getClientIp } from '@/lib/http';
+import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
 
 const ConfirmSchema = z.object({
-  rider_token: z.string().regex(/^[0-9a-f]{16,32}$/),
+  rider_token: RiderTokenSchema,
 });
 
 // 骑手一键确认「信息无误」：POST /api/points/[id]/confirm

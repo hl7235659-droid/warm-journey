@@ -1,5 +1,6 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { listKnowledge } from '@/lib/db';
+import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 
 export const runtime = 'edge';
 
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const category = url.searchParams.get('category') ?? undefined;
   const q = url.searchParams.get('q') ?? undefined;
 
-  if (category && !['rights', 'channel', 'faq', 'notice'].includes(category)) {
+  if (category && !(KNOWLEDGE_CATEGORIES as readonly string[]).includes(category)) {
     return Response.json({ ok: false, error: '类别无效' }, { status: 422 });
   }
 
