@@ -42,9 +42,10 @@ const TRUSTED_HOSTS = new Set([
   'api.anthropic.com',
 ]);
 
-export function allowedProviderHosts(extra?: string): string[] {
-  const custom = (extra ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
-  return [...custom];
+// AI_ALLOWED_HOSTS 追加项的解析（trim / 小写 / 去空）。只在 validateBaseUrl 内部使用，
+// 不导出：单测从 validateBaseUrl 这个真实入口验它的行为，比验一个内部函数更稳。
+function allowedProviderHosts(extra: string): string[] {
+  return extra.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
 }
 
 export function isTrustedProviderHost(hostname: string, extraHosts: string[] = []): boolean {
@@ -70,7 +71,7 @@ export function validateBaseUrl(raw: string, extraHostsCsv?: string): BaseUrlRes
   if (BLOCKED_HOST.some((re) => re.test(u.hostname))) {
     return { ok: false, url: '', error: '不支持内网或本机地址' };
   }
-  if (!isTrustedProviderHost(u.hostname, allowedProviderHosts(extraHostsCsv))) {
+  if (!isTrustedProviderHost(u.hostname, allowedProviderHosts(extraHostsCsv ?? ''))) {
     return { ok: false, url: '', error: '该域名不在受信任的接口列表内，请改用主流 OpenAI 兼容服务或用 AI_ALLOWED_HOSTS 追加' };
   }
   // 去尾斜杠：https://api.x.com/v1/ → https://api.x.com/v1；根路径 → origin

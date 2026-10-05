@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { validateBaseUrl, isTrustedProviderHost, allowedProviderHosts, chatCompletionsUrl } from '../../src/lib/ai/fetch.ts';
+import { validateBaseUrl, isTrustedProviderHost, chatCompletionsUrl } from '../../src/lib/ai/fetch.ts';
 import { pageParams, clampInt } from '../../src/lib/pagination.ts';
 import { PointCreateSchema, PointUpdateSchema, POINT_ADMISSION_SCHEMA } from '../../src/lib/point-schema.ts';
 
@@ -41,7 +41,10 @@ test('子域只认受信任父域，尾斜杠被规范化', () => {
   assert.equal(isTrustedProviderHost('notopenrouter.ai'), false);
   assert.equal(validateBaseUrl('https://api.deepseek.com/v1/').url, 'https://api.deepseek.com/v1');
   assert.equal(chatCompletionsUrl('https://api.deepseek.com/v1'), 'https://api.deepseek.com/v1/chat/completions');
-  assert.deepEqual(allowedProviderHosts('A.com, b.com ,'), ['a.com', 'b.com']);
+  // AI_ALLOWED_HOSTS 追加项的 trim / 大小写 / 空项容错，从公开入口验（原实现里
+  // allowedProviderHosts 是内部函数，不再导出）
+  assert.equal(validateBaseUrl('https://relay.example.com/v1', ' ,, Relay.EXAMPLE.com ,').ok, true);
+  assert.equal(validateBaseUrl('https://evil.example.com/v1', ',,').ok, false);
 });
 
 // ---------- 分页钳制（防 500 与全表拉取） ----------
