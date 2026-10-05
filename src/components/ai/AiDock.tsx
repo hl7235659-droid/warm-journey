@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import type { AiAction, ChatMessage, ChatSession, ProviderStore } from '@/lib/ai/types';
+import { HISTORY_WINDOW } from '@/lib/ai/types';
 import {
   loadProviders, saveProviders, activeProvider, loadSessions, saveSessions,
   newSession, appendMessage, setSessionTitle, deleteSession,
@@ -116,6 +117,13 @@ export default function AiDock() {
     if (!content || sending) return;
     const sid = ensureSession();
 
+    // 历史窗口必须在追加本次提问之前算：commit 之后末位就是刚发的那条，
+    // 再随请求 append 一次就是双发（B1）。
+    const session = sessionsRef.current.find((s) => s.id === sid);
+    const history = (session?.messages ?? [])
+      .slice(-HISTORY_WINDOW)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     // 追加用户消息 + 自动起标题（单次 commit，避免中间态）
     commit((list) => {
       let base = list;
@@ -128,10 +136,6 @@ export default function AiDock() {
     try {
       const context = await getContext(); // 60s 缓存，位置会变时自动刷新
       const provider = activeProvider(providerStore);
-      const current = sessionsRef.current.find((s) => s.id === sid);
-      const history = (current?.messages ?? [])
-        .slice(-11)
-        .map((m) => ({ role: m.role, content: m.content }));
 
       let assistant: ChatMessage;
       try {
@@ -143,7 +147,7 @@ export default function AiDock() {
               ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: provider.model, temperature: provider.temperature }
               : undefined,
             messages: [...history, { role: 'user' as const, content }],
-            pointId: current?.pointId,
+            pointId: session?.pointId,
             context: context ?? undefined,
           }),
         });

@@ -1,6 +1,6 @@
 // 服务端 prompt 组装（顺序：角色 → 站点功能知识 → 业务知识 → 当前站点 → 动态上下文 → 协议）
 import type { WireMessage } from './truncate';
-import { normalizeMessages } from './truncate';
+import { clip, MAX_MESSAGE_CHARS } from './truncate';
 import type { HelpEntry } from './site-help';
 import { ACTION_PROTOCOL_PROMPT } from './actions';
 import { PERSONA_PROMPT, ADMIN_PERSONA_PROMPT } from './persona';
@@ -27,7 +27,7 @@ export interface PointPromptInfo {
 
 export interface PromptInput {
   userMessage: string;
-  history: Array<{ role?: unknown; content?: unknown }>;
+  history: WireMessage[];         // 已归一，且不含本次提问（切分见 /api/ai/chat）
   siteHelp: HelpEntry[];
   knowledge: KnowledgeRef[];
   point?: PointPromptInfo;
@@ -106,15 +106,9 @@ export function buildMessages(input: PromptInput): WireMessage[] {
 
   if (!isAdmin) parts.push(ACTION_PROTOCOL_PROMPT);
 
-  const history = normalizeMessages(input.history);
-  // 末条若与最新消息重复则去重
-  const trimmed = [...history];
-  if (trimmed.length > 0 && trimmed[trimmed.length - 1].role === 'user') {
-    trimmed.pop();
-  }
   return [
     { role: 'system', content: parts.join('\n') },
-    ...trimmed,
-    { role: 'user', content: input.userMessage.slice(0, 4000) },
+    ...input.history,
+    { role: 'user', content: clip(input.userMessage, MAX_MESSAGE_CHARS) },
   ];
 }

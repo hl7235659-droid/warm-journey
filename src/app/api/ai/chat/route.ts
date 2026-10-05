@@ -5,7 +5,7 @@ import {
 } from '@/lib/db';
 import { matchSiteHelp } from '@/lib/ai/site-help';
 import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
-import { normalizeMessages } from '@/lib/ai/truncate';
+import { normalizeMessages, MAX_MESSAGE_CHARS } from '@/lib/ai/truncate';
 import { extractAction, IdSchema } from '@/lib/ai/actions';
 import { localFallback } from '@/lib/ai/fallback';
 import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
@@ -32,7 +32,7 @@ const BodySchema = z.object({
   }).optional(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string().max(8000),
+    content: z.string().max(MAX_MESSAGE_CHARS),
   })).min(1).max(30),
   pointId: IdSchema.optional(),
   context: z.object({
@@ -105,8 +105,11 @@ export async function POST(req: Request) {
   }
 
   const history = normalizeMessages(input.messages);
-  const lastUser = [...history].reverse().find((m) => m.role === 'user');
-  if (!lastUser) return jsonErr('缺少用户消息', 422);
+  // 契约：messages 末条就是本次提问，之前的一律算历史。提问由 buildMessages 末尾
+  // 单独追加一次，这里必须把它从历史里切掉——客户端与服务端各认一半正是 B1 双发的成因。
+  const lastUser = history[history.length - 1];
+  if (!lastUser || lastUser.role !== 'user') return jsonErr('缺少用户消息', 422);
+  const prior = history.slice(0, -1);
 
   // ---------- prompt 组装 ----------
   const audience = input.audience ?? 'rider';
@@ -165,7 +168,7 @@ export async function POST(req: Request) {
   const context = (input.context ?? undefined) as AiContext | undefined;
   const messages = buildMessages({
     userMessage: lastUser.content,
-    history,
+    history: prior,
     siteHelp,
     knowledge: knowledge.map((k) => ({ title: k.title, content: k.content, category: k.category })),
     point: pointInfo,
