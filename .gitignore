@@ -1,18 +1,14 @@
 # dependencies
 /node_modules
-/.pnp
-.pnp.*
 
 # next.js
 /.next/
-/out/
 
 # production builds
 /.vercel/
 
 # cloudflare
 /.wrangler/
-/.cloudflare/
 
 # misc
 .DS_Store
@@ -22,8 +18,6 @@
 
 # debug
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # env files
 .env*
@@ -36,8 +30,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-.vercel
 
 # agent / artifacts
 .workbuddy-ai/

@@ -19,5 +19,3 @@ bucket_name = "warm-journey-images"
 # 仓库内禁止存放任何密钥。JWT_SECRET 等一律走：
 #   npx wrangler pages secret put JWT_SECRET
 # 本地开发密钥放 .dev.vars（已在 .gitignore 中忽略）。
-[vars]
-NEXT_PUBLIC_APP_URL = "https://warm-journey.pages.dev"

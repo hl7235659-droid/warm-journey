@@ -59,7 +59,7 @@ export default function PointHistoryPage() {
                           {h.change_summary || '变更'}
                         </p>
                         <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          由 {h.changed_by} · {date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          由 {h.changed_by_name ?? h.changed_by} · {date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '0.25rem', userSelect: 'none' }}>

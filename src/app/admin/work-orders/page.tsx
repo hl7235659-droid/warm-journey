@@ -46,7 +46,7 @@ export default function AdminWorkOrdersPage() {
       const r = await fetch(`/api/admin/work-orders/${editing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: editStatus, resolution_notes: editNote || undefined }),
+        body: JSON.stringify({ status: editStatus, resolution_note: editNote || undefined }),
       });
       const j = await r.json() as { ok: boolean; error?: string };
       if (j.ok) { setEditing(null); void load(); }
