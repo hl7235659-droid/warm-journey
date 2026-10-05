@@ -7,6 +7,7 @@ export type WorkOrderStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type InspectionResult = 'pass' | 'fail' | 'partial';
 export type AdminRole = 'super_admin' | 'admin' | 'inspector';
+export type VisitStatus = 'reserved' | 'in_store' | 'completed' | 'cancelled' | 'expired';
 
 export interface ServicePoint {
   id: string;
@@ -33,7 +34,6 @@ export interface ServicePoint {
 export interface AdmissionInfo {
   capacity?: number;           // max concurrent riders
   id_required?: boolean;
-  platform_required?: string;  // e.g. '美团', '饿了么', '顺丰' or null = all
   notes?: string;
 }
 
@@ -91,8 +91,30 @@ export interface Inspection {
   created_at: number;
 }
 
-export interface AdminUser {
+export interface Visit {
   id: string;
+  point_id: string;
+  point_name?: string;         // joined
+  rider_token: string;
+  status: VisitStatus;
+  reserved_at: number;
+  checked_in_at: number | null;
+  checked_out_at: number | null;
+  created_at: number;
+}
+
+export interface VisitFeedback {
+  id: string;
+  visit_id: string;
+  point_id: string;
+  point_name?: string;         // joined
+  rating: number;              // 1-5
+  supports: string[];
+  suggestion: string;
+  created_at: number;
+}
+
+export interface AdminUser {  id: string;
   username: string;
   role: AdminRole;
   display_name: string;
@@ -129,6 +151,13 @@ export const STATUS_LABELS: Record<PointStatus, string> = {
   temp_closed: '临时关闭',
 };
 
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  pending: '待核实',
+  processing: '核实处理中',
+  resolved: '已解决',
+  closed: '已关闭',
+};
+
 export const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
   closed: '已关闭未更新',
   info_wrong: '信息有误',
@@ -159,4 +188,17 @@ export const INSPECTION_RESULT_LABELS: Record<InspectionResult, string> = {
 
 export const SERVICE_TAGS = [
   '休息区', '充电', '饮用水', '急救箱', '雨具', '厕所', '餐饮', '停车', 'Wi-Fi',
+] as const;
+
+export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
+  reserved: '已预约',
+  in_store: '在店',
+  completed: '已离店',
+  cancelled: '已取消',
+  expired: '已过期',
+};
+
+// 离店反馈：希望获得的支持（多选）
+export const FEEDBACK_SUPPORT_TAGS = [
+  '充电', '饮用水', '热饭', '休息区', '厕所', 'Wi-Fi', '雨具', '急救药品', '手机维修', '法律援助', '心理疏导',
 ] as const;

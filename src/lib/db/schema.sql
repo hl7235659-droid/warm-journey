@@ -94,6 +94,47 @@ CREATE TABLE IF NOT EXISTS inspections (
   created_at     INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+-- 骑手「信息无误」一键确认
+CREATE TABLE IF NOT EXISTS point_confirms (
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  point_id    TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- 开通城市（多城市扩展：首页筛选 + 地图默认视野）
+CREATE TABLE IF NOT EXISTS cities (
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  name        TEXT NOT NULL UNIQUE,
+  center_lat  REAL NOT NULL DEFAULT 0,
+  center_lng  REAL NOT NULL DEFAULT 0,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- 预约 / 入店记录（骑手免登录，rider_token 为浏览器匿名标识）
+CREATE TABLE IF NOT EXISTS visits (
+  id            TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  point_id      TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
+  rider_token   TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'reserved'
+                  CHECK(status IN ('reserved','in_store','completed','cancelled','expired')),
+  reserved_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  checked_in_at INTEGER,
+  checked_out_at INTEGER,
+  created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- 离店满意度反馈（一次 visit 一条）
+CREATE TABLE IF NOT EXISTS visit_feedback (
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  visit_id    TEXT NOT NULL UNIQUE REFERENCES visits(id) ON DELETE CASCADE,
+  point_id    TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
+  rating      INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  supports    TEXT NOT NULL DEFAULT '[]',   -- JSON array：希望获得的支持
+  suggestion  TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
 CREATE INDEX IF NOT EXISTS idx_points_status  ON service_points(status);
 CREATE INDEX IF NOT EXISTS idx_points_city    ON service_points(city);
 CREATE INDEX IF NOT EXISTS idx_history_point  ON point_history(point_id);
@@ -102,3 +143,28 @@ CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_orders_status  ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_point   ON work_orders(point_id);
 CREATE INDEX IF NOT EXISTS idx_inspections_point ON inspections(point_id);
+CREATE INDEX IF NOT EXISTS idx_confirms_point  ON point_confirms(point_id);
+CREATE INDEX IF NOT EXISTS idx_visits_point_status ON visits(point_id, status);
+CREATE INDEX IF NOT EXISTS idx_visits_rider    ON visits(rider_token, status);
+CREATE INDEX IF NOT EXISTS idx_feedback_point  ON visit_feedback(point_id);
+
+-- AI 助手业务知识库（管理端维护，小暖检索注入 prompt）
+CREATE TABLE IF NOT EXISTS ai_knowledge (
+  id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  category   TEXT NOT NULL CHECK(category IN ('rights','channel','faq','notice')),
+  title      TEXT NOT NULL,
+  content    TEXT NOT NULL,
+  tags       TEXT NOT NULL DEFAULT '[]',  -- JSON array，检索用
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_knowledge_cat ON ai_knowledge(category, enabled);
+
+-- AI 接口频率限制（每 IP 每分钟窗口计数）
+CREATE TABLE IF NOT EXISTS ai_rate (
+  ip           TEXT NOT NULL,
+  window_start INTEGER NOT NULL,
+  count        INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (ip, window_start)
+);

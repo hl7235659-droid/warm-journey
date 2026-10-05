@@ -8,6 +8,11 @@ binding = "DB"
 database_name = "warm-journey-db"
 database_id = "87ee3b36-9356-4ff2-9f0b-210178f588df"
 
+# 上报 / 巡检图片存储（桶需先创建：npx wrangler r2 bucket create warm-journey-images）
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "warm-journey-images"
+
 [vars]
 JWT_SECRET = "change-me-in-production"
 NEXT_PUBLIC_APP_URL = "http://localhost:3000"

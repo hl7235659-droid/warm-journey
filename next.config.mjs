@@ -6,15 +6,6 @@ if (process.env.NODE_ENV === 'development') {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async redirects() {
-    return [
-      // 用 HTTP 307 重定向，而不是在 server component 里调 redirect()。
-      // admin/layout.tsx 是客户端组件，其下再走服务端 redirect 会让
-      // Next 15 客户端路由抛 React error #310（Rendered more hooks...）。
-      { source: '/admin', destination: '/admin/points', permanent: false },
-    ];
-  },
-
   async headers() {
     return [
       {
