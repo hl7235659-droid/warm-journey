@@ -9,7 +9,6 @@ export async function GET(req: Request) {
   const { env } = getRequestContext();
   const url = new URL(req.url);
   const category = url.searchParams.get('category') ?? undefined;
-  const q = url.searchParams.get('q') ?? undefined;
 
   if (category && !(KNOWLEDGE_CATEGORIES as readonly string[]).includes(category)) {
     return Response.json({ ok: false, error: '类别无效' }, { status: 422 });
@@ -17,7 +16,6 @@ export async function GET(req: Request) {
 
   const result = await listKnowledge(env.DB, {
     category,
-    q,
     enabled: true,
     page: 1,
     page_size: 50,

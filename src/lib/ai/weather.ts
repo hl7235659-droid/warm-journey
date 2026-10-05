@@ -6,7 +6,6 @@
 // 一份 env 类型），2026-10 批次 6 删除。删减范围的前置探测见计划 §9.3 执行回写：
 // wttr.in 的 lang_zh 字段虽然恒有值，内容却是英文（"Clear "/"Smoky haze"），
 // 因此下面的中译表是唯一的中文来源，必须保留。
-import { fetchWithTimeout } from './fetch';
 import type { WeatherInfo } from './types';
 
 const TIMEOUT_MS = 5000;
@@ -55,8 +54,9 @@ function zhWeather(desc: string | undefined): string {
 // Promise.allSettled）兜住——天气失败绝不能拖垮整个上下文响应。
 export async function fetchWeather(lat?: number, lng?: number): Promise<WeatherInfo | null> {
   const path = lat !== undefined && lng !== undefined ? `/${lat.toFixed(3)},${lng.toFixed(3)}` : '';
-  const res = await fetchWithTimeout(`https://wttr.in${path}?format=j1&lang=zh`, TIMEOUT_MS, {
+  const res = await fetch(`https://wttr.in${path}?format=j1&lang=zh`, {
     headers: { 'User-Agent': 'curl/8.0' }, // wttr.in 对浏览器 UA 返回 HTML
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) return null;
   let data: WttrJ1;

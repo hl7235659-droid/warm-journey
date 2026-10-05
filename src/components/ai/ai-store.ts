@@ -21,7 +21,11 @@ function readKeyMap(): Record<string, string> {
   }
 }
 
+// 本机 id 的唯一来源（会话 id 与提供商 id 共用；此前 ProviderDrawer 另有一份，两种形态）。
+// 安全上下文（https 部署 / localhost）用平台原生 randomUUID；手机连店内 wifi 走
+// http://192.168.x.x 这类明文 LAN 地址时 crypto.randomUUID 根本不存在，退回 16 位 hex。
 export function genLocalId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');

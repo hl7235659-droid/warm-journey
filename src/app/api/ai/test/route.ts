@@ -1,7 +1,7 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/db';
-import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
+import { validateBaseUrl, chatCompletionsUrl } from '@/lib/ai/fetch';
 import { requireAdmin } from '@/lib/auth';
 import { getClientIp, jsonErr } from '@/lib/http';
 
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   if (!apiKey) return jsonErr('缺少 API Key（本机未填，服务器也未配置）', 422);
 
   try {
-    const res = await fetchWithTimeout(chatCompletionsUrl(v.url), 20_000, {
+    const res = await fetch(chatCompletionsUrl(v.url), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -55,6 +55,7 @@ export async function POST(req: Request) {
         max_tokens: 20,
         messages: [{ role: 'user', content: '连通性测试，请只回复四个字：连接成功' }],
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) {
       console.error('ai test: provider http error, status:', res.status);
@@ -75,7 +76,10 @@ export async function POST(req: Request) {
   } catch (e) {
     const err = e as { name?: string };
     console.error('ai test: fetch failed:', err?.name ?? 'unknown');
-    const reason = err?.name === 'AbortError' ? '连接超时（20s）' : '网络错误，无法连接该地址';
+    // AbortSignal.timeout 超时抛的是 TimeoutError 而非 AbortError（计划勘误 E1，本机
+    // 实测 name='TimeoutError'）；两个名字都认，是给 fetch 实现留的余地，不是防御
+    const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+    const reason = timedOut ? '连接超时（20s）' : '网络错误，无法连接该地址';
     return Response.json({ ok: false, error: reason }, { status: 200 });
   }
 }

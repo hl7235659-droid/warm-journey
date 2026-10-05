@@ -1,6 +1,7 @@
 'use client';
 // AI 提供商管理抽屉：增删改查/设为当前/连通性测试（配置仅存本机 localStorage）
 import { useState } from 'react';
+import { genLocalId } from './ai-store';
 import type { AiProvider, ProviderStore } from '@/lib/ai/types';
 import type { ApiResponse } from '@/lib/types';
 
@@ -18,16 +19,6 @@ interface TestResult {
 }
 
 const TEMP_DEFAULT = '0.3';
-
-// 本机生成 id：优先 crypto.randomUUID，退化到随机 hex
-function newId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 // 展示用 Key 掩码：空 → 未配置，否则前 4 位 + ••••
 function maskKey(key: string): string {
@@ -118,7 +109,7 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
 
     if (editing === 'new') {
       const p: AiProvider = {
-        id: newId(),
+        id: genLocalId(),
         name: vName,
         baseUrl: vUrl,
         apiKey: apiKey.trim(),

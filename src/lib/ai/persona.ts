@@ -55,8 +55,8 @@ const GREETINGS: Array<{ hours: number[]; lines: string[] }> = [
   },
 ];
 
-export function pickGreeting(now = new Date()): string {
-  const h = now.getHours();
+export function pickGreeting(): string {
+  const h = new Date().getHours();
   const slot = GREETINGS.find((g) => g.hours.includes(h)) ?? GREETINGS[0];
   return slot.lines[Math.floor(Math.random() * slot.lines.length)];
 }

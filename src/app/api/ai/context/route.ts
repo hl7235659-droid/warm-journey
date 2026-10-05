@@ -7,15 +7,20 @@ import type { AiContext } from '@/lib/ai/types';
 export const runtime = 'edge';
 
 // Asia/Shanghai 固定时区格式化：'2026-10-05 14:30 周一'
+// 单实例 + 一次 formatToParts（此前每次请求现造两个 formatter）。
+// hourCycle:'h23' 写死而不用 hour12:false：后者在部分 ICU 版本会让 zh-CN 把午夜排成
+// '24:00'，前者按规范锁定 00–23。
+const SH_FMT = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  weekday: 'short',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
 function nowShanghai(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(new Date());
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short' }).format(new Date());
-  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')} ${weekday}`;
+  const p = SH_FMT.formatToParts(new Date());
+  const get = (t: Intl.DateTimeFormatPartTypes) => p.find((x) => x.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')} ${get('weekday')}`;
 }
 
 // GET /api/ai/context?lat=23.04&lng=113.40

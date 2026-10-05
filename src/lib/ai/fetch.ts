@@ -78,16 +78,6 @@ export function validateBaseUrl(raw: string, extraHostsCsv?: string): BaseUrlRes
   return { ok: true, url: u.origin + path };
 }
 
-export async function fetchWithTimeout(url: string, ms: number, init?: RequestInit): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 // OpenAI 兼容 chat/completions 地址
 export function chatCompletionsUrl(baseUrl: string): string {
   return `${baseUrl}/chat/completions`;

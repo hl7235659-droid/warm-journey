@@ -18,8 +18,8 @@ function getPosition(timeoutMs = 6000): Promise<{ lat: number; lng: number } | n
   });
 }
 
-export async function getContext(force = false): Promise<AiContext | null> {
-  if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.ctx;
+export async function getContext(): Promise<AiContext | null> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.ctx;
   const pos = await getPosition();
   const qs = pos ? `?lat=${pos.lat.toFixed(5)}&lng=${pos.lng.toFixed(5)}` : '';
   const json = await api<AiContext>(`/api/ai/context${qs}`);

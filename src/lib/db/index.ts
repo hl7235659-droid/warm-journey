@@ -964,13 +964,12 @@ export async function deleteKnowledge(db: D1Database, id: string) {
 export async function searchKnowledge(
   db: D1Database,
   query: string,
-  opts: { category?: string; topN?: number } = {},
+  opts: { topN?: number } = {},
 ) {
-  const { category, topN = 3 } = opts;
+  const { topN = 3 } = opts;
   const rows = await db.prepare(
-    `SELECT * FROM ai_knowledge WHERE enabled = 1 ${category ? 'AND category = ?' : ''}
-     ORDER BY updated_at DESC LIMIT 50`,
-  ).bind(...(category ? [category] : [])).all<RawKnowledge>();
+    'SELECT * FROM ai_knowledge WHERE enabled = 1 ORDER BY updated_at DESC LIMIT 50',
+  ).all<RawKnowledge>();
   const q = (query || '').trim().toLowerCase();
   const items = (rows.results ?? []).map(deserializeKnowledge);
   if (!q) return items.slice(0, topN);

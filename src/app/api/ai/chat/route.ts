@@ -8,7 +8,7 @@ import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
 import { normalizeMessages, MAX_MESSAGE_CHARS } from '@/lib/ai/truncate';
 import { extractAction, IdSchema } from '@/lib/ai/actions';
 import { localFallback } from '@/lib/ai/fallback';
-import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
+import { validateBaseUrl, chatCompletionsUrl } from '@/lib/ai/fetch';
 import { requireAdmin } from '@/lib/auth';
 import { getClientIp, jsonErr } from '@/lib/http';
 import { STATUS_LABELS } from '@/lib/types';
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
   const audience = input.audience ?? 'rider';
   const siteHelp = audience === 'admin'
     ? []
-    : matchSiteHelp(lastUser.content, 'rider', 3);
+    : matchSiteHelp(lastUser.content, 3);
   let knowledge: Awaited<ReturnType<typeof searchKnowledge>> = [];
   if (audience === 'rider') {
     try {
@@ -159,6 +159,15 @@ export async function POST(req: Request) {
   }
 
   const context = (input.context ?? undefined) as AiContext | undefined;
+
+  // 降级入参只组装一次（此前 4 个失败分支逐字抄了 4 遍 audience/dataText）
+  const fallbackArgs = { audience, dataText: input.dataText };
+  // 远端失败 → 本地降级回答，并在文本中如实告知已切换本地模式
+  const remoteFailedFallback = (reason: string): Response => {
+    const fb = localFallback(lastUser.content, context, pointInfo, fallbackArgs);
+    return localResponse(`（联网模型调用失败：${reason}，已切换本地回答）\n\n${fb.text}`, fb.action);
+  };
+
   const messages = buildMessages({
     userMessage: lastUser.content,
     history: prior,
@@ -195,16 +204,13 @@ export async function POST(req: Request) {
 
   if (!baseUrl || !apiKey || !model) {
     // 无任何可用提供商 → 本地降级
-    const fb = localFallback(lastUser.content, context, pointInfo, {
-      audience,
-      dataText: input.dataText,
-    });
+    const fb = localFallback(lastUser.content, context, pointInfo, fallbackArgs);
     return localResponse(fb.text, fb.action);
   }
 
   // ---------- 远端转发 ----------
   try {
-    const res = await fetchWithTimeout(chatCompletionsUrl(baseUrl), REQUEST_TIMEOUT_MS, {
+    const res = await fetch(chatCompletionsUrl(baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -219,11 +225,12 @@ export async function POST(req: Request) {
         // 仅对 deepseek.com 下发该参数，避免其他 OpenAI 兼容服务因未知字段报错
         ...(baseUrl.includes('deepseek.com') ? { reasoning_effort: 'low' } : {}),
       }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.error('ai chat: provider http error, status:', res.status);
       // 上游错误不透传原文，只给通用文案（详情留服务端日志）
-      return remoteFailedFallback(lastUser.content, context, pointInfo, '模型接口暂时不可用', { audience, dataText: input.dataText });
+      return remoteFailedFallback('模型接口暂时不可用');
     }
     const payload = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -233,7 +240,7 @@ export async function POST(req: Request) {
     if (!rawText) {
       const errMsg = typeof payload.error === 'string' ? payload.error : payload.error?.message;
       console.error('ai chat: provider empty reply:', errMsg?.slice(0, 200) ?? 'no error detail');
-      return remoteFailedFallback(lastUser.content, context, pointInfo, '模型接口返回异常', { audience, dataText: input.dataText });
+      return remoteFailedFallback('模型接口返回异常');
     }
 
     // 解析并校验 action
@@ -245,21 +252,8 @@ export async function POST(req: Request) {
   } catch (e) {
     const err = e as { name?: string; message?: string };
     console.error('ai chat: fetch failed:', err?.name ?? 'unknown', err?.message ?? '');
-    return remoteFailedFallback(lastUser.content, context, pointInfo, '网络异常，暂时无法联网回答', { audience, dataText: input.dataText });
+    return remoteFailedFallback('网络异常，暂时无法联网回答');
   }
-}
-
-// 远端失败 → 本地降级回答，并在文本中如实告知已切换本地模式
-function remoteFailedFallback(
-  userMessage: string,
-  context: AiContext | undefined,
-  point: PointPromptInfo | undefined,
-  reason: string,
-  options?: import('@/lib/ai/fallback').FallbackOptions,
-): Response {
-  const fb = localFallback(userMessage, context, point, options);
-  const text = `（联网模型调用失败：${reason}，已切换本地回答）\n\n${fb.text}`;
-  return localResponse(text, fb.action);
 }
 
 // action 的 pointId 必须真实存在，否则丢弃整个 action（只保留文本）

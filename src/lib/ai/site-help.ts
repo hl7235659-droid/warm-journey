@@ -1,10 +1,13 @@
 // 站点功能说明书（第一层知识库，代码内置，离线降级也能答）
 // 内容以当前代码实际行为为准（预约保留 2 小时、入店 4 小时自动离店、
 // 查询码免登录查进度、≥3 条待核实上报自动开工单等）。
+//
+// 只收骑手视角：这份手册的唯一读者是 matchSiteHelp 的两个调用点
+// （/api/ai/chat 与本地降级），两处都只服务骑手；曾有 3 条 audience='admin'
+// 的条目因"匹配时恒定按 rider 过滤"而永不可达，2026-10 批次 6 随该参数一起删除。
+// 管理端的功能说明属 /admin 界面文案与知识库条目，不在这里。
 
 export interface HelpEntry {
-  id: string;
-  audience: 'rider' | 'admin';
   title: string;
   content: string;
   keywords: string[];
@@ -12,8 +15,6 @@ export interface HelpEntry {
 
 export const SITE_HELP: HelpEntry[] = [
   {
-    id: 'find-point',
-    audience: 'rider',
     title: '查找附近驿站',
     content:
       '打开暖途同行首页即可浏览全部驿站：\n' +
@@ -24,8 +25,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['附近', '找', '查找', '驿站', '站点', '定位', '距离', '地图', '哪里', '哪有', '位置', '搜索', '筛选', '城市'],
   },
   {
-    id: 'reserve',
-    audience: 'rider',
     title: '预约与入店流程（扫码确认）',
     content:
       '驿站采用「预约占名额 → 到店扫码 → 离店扫码」流程：\n' +
@@ -37,8 +36,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['预约', '入店', '进店', '名额', '二维码', '扫码', '占位', '在店', '离店', '取消', '保留', '多久', '码'],
   },
   {
-    id: 'report',
-    audience: 'rider',
     title: '上报问题与查询码',
     content:
       '发现驿站有问题（已关闭未更新/信息有误/设施损坏/安全隐患等）可以上报：\n' +
@@ -49,8 +46,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['上报', '问题', '反馈问题', '举报', '查询码', '进度', '工单', '照片', '损坏', '错误', '报修'],
   },
   {
-    id: 'feedback',
-    audience: 'rider',
     title: '离店反馈（满意度小卡片）',
     content:
       '每次离店后可以填一张满意度卡片：\n' +
@@ -61,8 +56,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['反馈', '满意度', '评分', '打分', '星级', '建议', '离店', '支持', '评价', '跳过'],
   },
   {
-    id: 'fav-filter',
-    audience: 'rider',
     title: '收藏与筛选',
     content:
       '1. 收藏：驿站卡片右上角有 ♡ 按钮，点一下收藏常用站点（存在本机），再点首页的「只看收藏」即可快速找到；\n' +
@@ -71,8 +64,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['收藏', '常用', '筛选', '只看收藏', '确认', '信息无误', '常用站点'],
   },
   {
-    id: 'report-status',
-    audience: 'rider',
     title: '查询上报处理进度',
     content:
       '1. 打开首页页脚的「上报进度」入口；\n' +
@@ -81,8 +72,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['查询码', '进度', '上报进度', '状态', '处理', '结果', '查进度'],
   },
   {
-    id: 'pwa',
-    audience: 'rider',
     title: '加到主屏与离线使用',
     content:
       '暖途同行是网页应用，无需下载 App：\n' +
@@ -92,8 +81,6 @@ export const SITE_HELP: HelpEntry[] = [
     keywords: ['主屏', '离线', '缓存', 'App', '下载', '扫码', '二维码', '安装', 'PWA'],
   },
   {
-    id: 'ai-usage',
-    audience: 'rider',
     title: '小暖 AI 助手怎么用',
     content:
       '右下角的朱砂印章「暖」就是 AI 助手小暖：\n' +
@@ -103,37 +90,13 @@ export const SITE_HELP: HelpEntry[] = [
       '4. 没配置提供商也能用：小暖会基于本站功能说明与附近驿站数据给出本地回答。',
     keywords: ['小暖', 'AI', '助手', '悬浮', '印章', '怎么用', '提供商', 'key', '密钥', '模型', '配置', '设置'],
   },
-  {
-    id: 'admin-overview',
-    audience: 'admin',
-    title: '管理端功能总览',
-    content:
-      '管理端（/admin）面向驿站运营方，包含：数据看板、服务点管理（含变更历史与门口/店内两张二维码）、上报审核、工单、巡检记录、在店管理（强制离店）、上报热力图、城市管理、账号管理（super_admin 专属）。三级角色：super_admin / admin / inspector。',
-    keywords: ['管理', '后台', '看板', '统计', '运营', '角色', '权限'],
-  },
-  {
-    id: 'admin-visits',
-    audience: 'admin',
-    title: '在店管理与反馈查看',
-    content:
-      '管理端「在店」页：默认显示当前在店名单（骑手匿名标识、预约/入店时间、在店时长），可对超时未离店的骑手执行「强制离店」；页面下方可查看离店反馈（星级、希望获得的支持标签、改进建议）。',
-    keywords: ['在店', '强制离店', '名单', '时长', '反馈查看', '满意度'],
-  },
-  {
-    id: 'admin-knowledge',
-    audience: 'admin',
-    title: 'AI 知识库维护',
-    content:
-      '管理端「知识库」页维护 AI 助手的业务知识条目（权益政策/求助渠道/常见问题/平台公告）。条目启用后会被小暖检索引用并向骑手展示出处；停用条目不进入回答。',
-    keywords: ['知识库', '条目', '权益', '渠道', '公告', '维护', '启停'],
-  },
 ];
 
 // 关键词匹配打分：关键词命中 +1；标题包含查询片段再加权。返回 topN。
-export function matchSiteHelp(query: string, audience: 'rider' | 'admin', topN = 3): HelpEntry[] {
+export function matchSiteHelp(query: string, topN = 3): HelpEntry[] {
   const q = (query || '').trim().toLowerCase();
   if (!q) return [];
-  const scored = SITE_HELP.filter((e) => e.audience === audience)
+  const scored = SITE_HELP
     .map((e) => {
       let score = 0;
       for (const kw of e.keywords) {

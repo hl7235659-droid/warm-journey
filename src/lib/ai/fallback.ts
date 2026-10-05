@@ -36,7 +36,7 @@ export function localFallback(
   }
 
   // 1) 站点功能说明命中 → 直接给操作指引
-  const hits = matchSiteHelp(msg, 'rider', 2);
+  const hits = matchSiteHelp(msg, 2);
   if (hits.length > 0 && !NEARBY_INTENT.test(msg) && !POINT_REVIEW_INTENT.test(msg)) {
     const text = hits
       .map((h) => `【${h.title}】\n${h.content}`)
