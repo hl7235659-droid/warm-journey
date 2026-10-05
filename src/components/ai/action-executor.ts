@@ -1,6 +1,6 @@
 'use client';
 // 命令执行器：zod 白名单校验 → 分流执行。
-// 读操作（navigate/filter/route/list_knowledge）直接执行；写操作（reserve/report/feedback）
+// 读操作（navigate/filter/route）直接执行；写操作（reserve/report）
 // 只做「带路 + 预填」（跳转到既有表单页），绝不自动提交。
 import { ActionSchema } from '@/lib/ai/actions';
 import { navToPoint } from '@/lib/nav';
@@ -12,21 +12,9 @@ export interface ExecResult {
   message: string;
 }
 
-const REPORT_CATEGORY_QUERY: Record<string, string> = {
-  closed: 'closed',
-  info_wrong: 'info_wrong',
-  facility: 'facility',
-  safety: 'safety',
-  other: 'other',
-};
-
-interface NavRouter {
-  push: (href: string) => void;
-}
-
 export async function executeAction(
   action: AiAction,
-  router: NavRouter,
+  push: (href: string) => void,
 ): Promise<ExecResult> {
   const parsed = ActionSchema.safeParse(action);
   if (!parsed.success) {
@@ -35,29 +23,31 @@ export async function executeAction(
   const a = parsed.data;
 
   switch (a.type) {
-    case 'navigate': {
-      router.push(`/point/${a.params.pointId}`);
-      return { ok: true, message: '正在打开站点详情' };
+    // navigate 与 reserve 落地行为一致（都是去详情页），预约仍要用户在卡片里确认。
+    // 两个 action 名分开只为提示词层区分意图，文案各归各。
+    case 'navigate':
+    case 'reserve': {
+      push(`/point/${a.params.pointId}`);
+      return {
+        ok: true,
+        message: a.type === 'reserve' ? '已打开站点详情，请在预约卡片里确认预约' : '正在打开站点详情',
+      };
     }
     case 'filter': {
       const qs = new URLSearchParams();
       if (a.params.city) qs.set('city', a.params.city);
       if (a.params.service) qs.set('service', a.params.service);
-      router.push(`/?${qs.toString()}`);
+      push(`/?${qs.toString()}`);
       return { ok: true, message: '正在按条件筛选' };
     }
-    case 'reserve': {
-      // 写操作：带路到详情页的预约卡片，由用户自行确认
-      router.push(`/point/${a.params.pointId}`);
-      return { ok: true, message: '已打开站点详情，请在预约卡片里确认预约' };
-    }
     case 'report': {
-      const category = a.params.category ? REPORT_CATEGORY_QUERY[a.params.category] : null;
+      // category 已由 ActionSchema 的 z.enum(REPORT_CATEGORIES) 限定，可直接拼接
+      const qs = a.params.category ? `?category=${a.params.category}` : '';
       if (a.params.pointId) {
-        router.push(`/point/${a.params.pointId}/report${category ? `?category=${category}` : ''}`);
-        return { ok: true, message: '已打上上报页，请核对信息后提交' };
+        push(`/point/${a.params.pointId}/report${qs}`);
+        return { ok: true, message: '已打开上报页，请核对信息后提交' };
       }
-      router.push('/');
+      push('/');
       return { ok: true, message: '请先选择要上报的站点' };
     }
     case 'route': {
@@ -67,18 +57,11 @@ export async function executeAction(
       navToPoint(json.data.lat, json.data.lng, json.data.name);
       return { ok: true, message: '已唤起地图导航' };
     }
-    case 'feedback': {
-      const json = await api<{ visit?: { point_id?: string } }>(`/api/visits/${a.params.visitId}`);
-      if (!json.ok) return { ok: false, message: json.error ?? '获取到访记录失败' };
-      const pointId = json.data?.visit?.point_id;
-      if (!pointId) return { ok: false, message: '到访记录不存在' };
-      router.push(`/checkout/${pointId}`);
-      return { ok: true, message: '已打开离店反馈页' };
-    }
-    case 'list_knowledge': {
-      // 由调用方（AiDock）处理：拉取条目并作为消息展示
-      return { ok: true, message: '__knowledge__' };
-    }
+    case 'list_knowledge':
+      // 不可达：AiDock 的 handleExecuteAction 在调用执行器之前就拦了本类型（拉条目并
+      // 作为消息展示）。留着这一支是为了让 switch 对判别式联合穷尽——将来新增 action
+      // 类型时编译器仍会提醒补分支，代价比写个 default 兜底小。
+      return { ok: true, message: '' };
   }
 }
 

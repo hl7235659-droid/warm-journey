@@ -1,7 +1,7 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { z } from 'zod';
 import {
-  getPoint, getOccupancy, getPointFeedbackSummary, searchKnowledge, getVisit, checkRateLimit,
+  getPoint, getOccupancy, getPointFeedbackSummary, searchKnowledge, checkRateLimit,
 } from '@/lib/db';
 import { matchSiteHelp } from '@/lib/ai/site-help';
 import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
@@ -269,17 +269,13 @@ function remoteFailedFallback(
   return localResponse(text, fb.action);
 }
 
-// action 的 pointId/visitId 必须真实存在，否则丢弃整个 action（只保留文本）
+// action 的 pointId 必须真实存在，否则丢弃整个 action（只保留文本）
 async function validateAction(db: D1Database, action?: AiAction): Promise<AiAction | undefined> {
   if (!action) return undefined;
   try {
     if (action.params.pointId) {
       const point = await getPoint(db, action.params.pointId);
       if (!point) return undefined;
-    }
-    if (action.params.visitId) {
-      const visit = await getVisit(db, action.params.visitId);
-      if (!visit) return undefined;
     }
   } catch (e) {
     console.error('ai chat: action validation failed:', (e as { message?: string })?.message ?? 'unknown');

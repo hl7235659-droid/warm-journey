@@ -32,19 +32,12 @@ export const ActionSchema = z.discriminatedUnion('type', [
     params: z.object({ pointId: IdSchema }),
   }),
   z.object({
-    type: z.literal('feedback'),
-    params: z.object({ visitId: IdSchema }),
-  }),
-  z.object({
     type: z.literal('list_knowledge'),
     params: z.object({ category: z.enum(KNOWLEDGE_CATEGORIES) }),
   }),
 ]);
 
 export type ParsedAction = z.infer<typeof ActionSchema>;
-
-// 写操作：一律前端二次确认，只带路+预填，绝不自动提交
-export const WRITE_ACTION_TYPES = new Set<string>(['reserve', 'report', 'feedback']);
 
 // 写进 system prompt 的协议全文
 export const ACTION_PROTOCOL_PROMPT = `【操作指令协议】
@@ -58,10 +51,9 @@ export const ACTION_PROTOCOL_PROMPT = `【操作指令协议】
 - reserve         {"pointId": "站点id"}          带用户去发起预约（需用户确认）
 - report          {"pointId": "站点id(可选)", "category": "closed|info_wrong|facility|safety|other(可选)"}  打开问题上报页
 - route           {"pointId": "站点id"}          打开地图导航去某驿站
-- feedback        {"visitId": "到访id"}          打开离店反馈
 - list_knowledge  {"category": "rights|channel|faq|notice"}   展示某类官方知识条目
 规则：
-1. pointId/visitId 只能使用资料中明确提供的 id，禁止编造；
+1. pointId 只能使用资料中明确提供的 id，禁止编造；
 2. 只在用户意图明确时才附加操作指令；普通问答不要附加；
 3. 代码块之外不要出现裸 JSON；一个回复最多一个操作指令。`;
 

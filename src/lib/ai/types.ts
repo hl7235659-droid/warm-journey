@@ -28,12 +28,10 @@ export type AiActionType =
   | 'reserve'         // 带路发起预约（写操作，需确认）
   | 'report'          // 带路打开问题上报（写操作，需确认）
   | 'route'           // 打开地图导航
-  | 'feedback'        // 带路打开离店反馈（写操作，需确认）
   | 'list_knowledge'; // 展示某类知识条目
 
 export interface AiActionParams {
   pointId?: string;
-  visitId?: string;
   city?: string;
   service?: string;
   category?: string;   // 上报类型或知识库类别

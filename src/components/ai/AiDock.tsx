@@ -181,7 +181,7 @@ export default function AiDock() {
       return;
     }
 
-    const result = await executeAction(action, { push: (href) => router.push(href) });
+    const result = await executeAction(action, (href) => router.push(href));
     markActionDone(session.id, msgTs);
     if (!result.ok && result.message) {
       commit((list) => appendMessage(list, session.id, { role: 'assistant', content: result.message, mode: 'local', ts: Date.now() }));

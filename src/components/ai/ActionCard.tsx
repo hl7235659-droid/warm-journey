@@ -15,7 +15,6 @@ const LABELS: Record<AiActionType, string> = {
   reserve: '去预约进店',
   report: '去上报问题',
   route: '开始导航',
-  feedback: '去填离店反馈',
   list_knowledge: '查看知识条目',
 };
 
@@ -26,12 +25,11 @@ const ICONS: Record<AiActionType, string> = {
   reserve: 'M8 7V5a4 4 0 1 1 8 0v2M5 7h14l-1 14H6L5 7z',
   report: 'M4 21V4m0 1h13l-2.5 4L17 13H4',
   route: 'M9 20l-5.5-2.5v-13L9 7l6-2.5 5.5 2.5v13L15 17.5 9 20zM9 7v13M15 4.5v13',
-  feedback: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
   list_knowledge: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5',
 };
 
 // 写操作（会产生真实副作用）需要用户二次确认
-const WRITE_ACTIONS: AiActionType[] = ['reserve', 'report', 'feedback'];
+const WRITE_ACTIONS: AiActionType[] = ['reserve', 'report'];
 
 export default function ActionCard({ action, done, onExecute }: Props) {
   const base = LABELS[action.type] ?? '执行操作';
