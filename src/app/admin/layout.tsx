@@ -6,10 +6,16 @@ import { useRouter, usePathname } from 'next/navigation';
 import { type Admin, AdminCtx } from './admin-context';
 
 const NAV = [
+  { href: '/admin',             label: '看板',     icon: '📊', exact: true },
   { href: '/admin/points',      label: '服务点',   icon: '📍' },
   { href: '/admin/reports',     label: '上报',     icon: '🚩' },
   { href: '/admin/work-orders', label: '工单',     icon: '📋' },
   { href: '/admin/inspections', label: '巡检',     icon: '🔍' },
+  { href: '/admin/visits',      label: '在店',     icon: '👥' },
+  { href: '/admin/knowledge',   label: '知识库',   icon: '📚' },
+  { href: '/admin/heatmap',     label: '热力图',   icon: '🗺️' },
+  { href: '/admin/cities',      label: '城市',     icon: '🏙️' },
+  { href: '/admin/users',       label: '账号',     icon: '👤' },
 ];
 
 const COLLAPSE_KEY = 'wj_admin_sidebar_collapsed';
@@ -130,7 +136,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             aria-label="管理端导航"
           >
             {NAV.map(n => {
-              const active = pathname.startsWith(n.href);
+              const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
               return (
                 <a
                   key={n.href} href={n.href}

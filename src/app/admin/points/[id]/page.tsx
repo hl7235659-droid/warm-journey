@@ -7,10 +7,10 @@ import type { ServicePoint } from '@/lib/types';
 import { SERVICE_TAGS } from '@/lib/types';
 
 const BLANK = (): Partial<ServicePoint> => ({
-  name: '', address: '', lat: 0, lng: 0, open_hours: '',
+  name: '', address: '', lat: 0, lng: 0, city: '', district: '', open_hours: '',
   status: 'open', contact_phone: '', notes: '',
   services: [],
-  admission: { platform_required: undefined, id_required: false, capacity: undefined, notes: '' },
+  admission: { id_required: false, capacity: undefined, notes: '' },
 });
 
 export default function AdminPointEditPage() {
@@ -22,6 +22,14 @@ export default function AdminPointEditPage() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/cities')
+      .then(r => r.json() as Promise<{ ok: boolean; data?: { id: string; name: string }[] }>)
+      .then(j => { if (j.ok && j.data) setCities(j.data.filter(c => (c as { enabled?: number }).enabled !== 0)); })
+      .catch(() => { /* 城市列表不可用时仍可手填 */ });
+  }, []);
 
   useEffect(() => {
     if (isNew) return;
@@ -113,6 +121,20 @@ export default function AdminPointEditPage() {
                   value={form.lng ?? 0} onChange={e => set('lng', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
+              <div>
+                <label htmlFor="city">城市</label>
+                <select id="city" className="select" value={form.city ?? ''} onChange={e => set('city', e.target.value)}>
+                  <option value="">未指定</option>
+                  {cities.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="district">区县</label>
+                <input id="district" className="input" placeholder="例：番禺区"
+                  value={form.district ?? ''} onChange={e => set('district', e.target.value)} />
+              </div>
+            </div>
             <div>
               <label htmlFor="open_hours">营业时间</label>
               <input id="open_hours" className="input" placeholder="例：09:00–22:00"
@@ -172,12 +194,6 @@ export default function AdminPointEditPage() {
             准入要求
           </h2>
           <div className="stack">
-            <div>
-              <label htmlFor="platform">仅限平台（留空表示不限制）</label>
-              <input id="platform" className="input" placeholder="例：美团、饿了么"
-                value={form.admission?.platform_required ?? ''}
-                onChange={e => setAdmission('platform_required', e.target.value || undefined)} />
-            </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
               <input type="checkbox"
                 checked={form.admission?.id_required ?? false}
@@ -200,6 +216,41 @@ export default function AdminPointEditPage() {
             </div>
           </div>
         </div>
+
+        {/* 直达二维码：打印张贴后骑手扫码直达详情页 / 离店 */}
+        {!isNew && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <h2 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              站内二维码（打印张贴）
+            </h2>
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'center' }}>
+                <img
+                  src={`/api/admin/points/${id}/qr`}
+                  alt={`${form.name ?? '服务点'} 详情页二维码`}
+                  style={{ width: '120px', height: '120px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: '#fff' }}
+                />
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.375rem 0' }}>门口贴 · 直达详情页</p>
+                <a href={`/api/admin/points/${id}/qr`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <img
+                  src={`/api/admin/points/${id}/qr?type=checkout`}
+                  alt={`${form.name ?? '服务点'} 离店码`}
+                  style={{ width: '120px', height: '120px', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: '#fff' }}
+                />
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0.375rem 0' }}>店内贴 · 扫码离店</p>
+                <a href={`/api/admin/points/${id}/qr?type=checkout`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.7, flex: 1, minWidth: '200px' }}>
+                骑手预约后凭手机上的入店码进店（工作人员扫码确认）；离店时扫店内离店码，
+                系统自动释放在店名额并收集满意度反馈。
+                <br />
+                <a href={`/point/${id}`} target="_blank" rel="noreferrer">预览详情页</a>
+              </div>
+            </div>
+          </div>
+        )}
 
         {error && <p className="field-error" role="alert" style={{ marginBottom: '1rem' }}>⚠ {error}</p>}
 

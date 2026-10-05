@@ -6,7 +6,7 @@ import type { Inspection } from '@/lib/types';
 import { INSPECTION_RESULT_LABELS } from '@/lib/types';
 
 const RESULT_BADGE: Record<string, string> = {
-  pass: 'badge-green', fail: 'badge-red', needs_attention: 'badge-amber',
+  pass: 'badge-green', fail: 'badge-red', partial: 'badge-amber',
 };
 
 export default function AdminInspectionsPage() {
@@ -16,7 +16,36 @@ export default function AdminInspectionsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ point_id: '', result: 'pass', notes: '' });
+  const [images, setImages] = useState<{ key: string; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [points, setPoints] = useState<{ id: string; name: string }[]>([]);
+
+  // 服务点下拉（替代手填 ID）
+  useEffect(() => {
+    fetch('/api/admin/points?page_size=100')
+      .then(r => r.json() as Promise<{ ok: boolean; data?: { items: { id: string; name: string }[] } }>)
+      .then(j => { if (j.ok && j.data) setPoints(j.data.items); })
+      .catch(() => { /* 失败时仍可手填 ID */ });
+  }, []);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    if (images.length + files.length > 8) { alert('最多上传 8 张图片'); return; }
+    setUploading(true);
+    try {
+      for (const file of files) {
+        if (file.size > 5 * 1024 * 1024) continue;
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const json = await res.json() as { ok: boolean; data?: { key: string; url: string } };
+        if (json.ok && json.data) setImages(prev => [...prev, json.data!]);
+      }
+    } finally { setUploading(false); }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,16 +61,16 @@ export default function AdminInspectionsPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.point_id.trim()) { alert('请输入服务点 ID'); return; }
+    if (!form.point_id.trim()) { alert('请选择服务点'); return; }
     setSaving(true);
     try {
       const r = await fetch('/api/admin/inspections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, images: images.map(i => i.key) }),
       });
       const j = await r.json() as { ok: boolean; error?: string };
-      if (j.ok) { setShowForm(false); setForm({ point_id: '', result: 'pass', notes: '' }); void load(); }
+      if (j.ok) { setShowForm(false); setForm({ point_id: '', result: 'pass', notes: '' }); setImages([]); void load(); }
       else alert(j.error ?? '提交失败');
     } finally { setSaving(false); }
   }
@@ -84,8 +113,18 @@ export default function AdminInspectionsPage() {
                 <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                   {ins.inspector_id ? ins.inspector_id.slice(0, 8) + '…' : '—'}
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {ins.notes ?? '—'}
+                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '200px' }}>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ins.notes ?? '—'}</div>
+                  {ins.images.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.375rem' }}>
+                      {ins.images.map(key => (
+                        <a key={key} href={`/api/images/${key}`} target="_blank" rel="noreferrer">
+                          <img src={`/api/images/${key}`} alt="巡检照片"
+                            style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                   {new Date(ins.created_at * 1000).toLocaleDateString('zh-CN')}
@@ -110,19 +149,58 @@ export default function AdminInspectionsPage() {
             <h2 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>新建巡检记录</h2>
             <form onSubmit={submit} noValidate>
               <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="ins-point">服务点 ID</label>
-                <input id="ins-point" className="input" value={form.point_id}
-                  onChange={e => setForm(f => ({ ...f, point_id: e.target.value }))}
-                  placeholder="粘贴服务点 ID" required />
+                <label htmlFor="ins-point">服务点</label>
+                {points.length > 0 ? (
+                  <select id="ins-point" className="select" value={form.point_id}
+                    onChange={e => setForm(f => ({ ...f, point_id: e.target.value }))}>
+                    <option value="">请选择…</option>
+                    {points.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                ) : (
+                  <input id="ins-point" className="input" value={form.point_id}
+                    onChange={e => setForm(f => ({ ...f, point_id: e.target.value }))}
+                    placeholder="粘贴服务点 ID" required />
+                )}
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label>巡检结果</label>
                 <select className="select" value={form.result}
                   onChange={e => setForm(f => ({ ...f, result: e.target.value }))}>
                   <option value="pass">通过</option>
-                  <option value="needs_attention">需关注</option>
+                  <option value="partial">部分通过</option>
                   <option value="fail">不通过</option>
                 </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label id="ins-imgs-label">现场照片（可选，最多 8 张）</label>
+                <div aria-labelledby="ins-imgs-label" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                  {images.map((img, i) => (
+                    <div key={img.key} style={{ position: 'relative', width: '56px', height: '56px' }}>
+                      <img src={img.url} alt={`已上传照片 ${i + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                      <button type="button" aria-label="移除这张照片"
+                        onClick={() => setImages(prev => prev.filter(x => x.key !== img.key))}
+                        style={{
+                          position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px',
+                          borderRadius: '50%', border: 'none', background: 'var(--danger)', color: '#fff',
+                          fontSize: '11px', lineHeight: 1, cursor: 'pointer',
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
+                  {images.length < 8 && (
+                    <label style={{
+                      width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: '1.5px dashed var(--border)', borderRadius: '4px', cursor: 'pointer',
+                      color: 'var(--text-muted)', fontSize: '1.2rem',
+                    }}>
+                      {uploading ? '…' : '+'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple
+                        onChange={handleFileChange} disabled={uploading}
+                        style={{ display: 'none' }} aria-label="选择照片" />
+                    </label>
+                  )}
+                </div>
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
                 <label htmlFor="ins-notes">备注</label>

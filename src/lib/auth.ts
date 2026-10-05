@@ -63,3 +63,12 @@ export async function requireAdmin(
   }
   return payload;
 }
+
+// 角色校验：在 requireAdmin 之后调用。返回 null 表示通过，否则返回 403 响应。
+export function requireRole(payload: AdminPayload, roles: string[]): Response | null {
+  if (roles.includes(payload.role)) return null;
+  return new Response(JSON.stringify({ ok: false, error: '权限不足' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

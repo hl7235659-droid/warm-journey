@@ -84,8 +84,18 @@ export default function AdminReportsPage() {
                 <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
                   {REPORT_CATEGORY_LABELS[r.category] ?? r.category}
                 </td>
-                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {r.content}
+                <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', maxWidth: '240px' }}>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.content}</div>
+                  {r.images.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.375rem' }}>
+                      {r.images.map(key => (
+                        <a key={key} href={`/api/images/${key}`} target="_blank" rel="noreferrer">
+                          <img src={`/api/images/${key}`} alt="上报照片"
+                            style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)' }} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem' }}>
                   <span className={`badge ${STATUS_BADGE[r.status] ?? ''}`}>{STATUS_LABELS[r.status] ?? r.status}</span>
