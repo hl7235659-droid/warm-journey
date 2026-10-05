@@ -1255,10 +1255,6 @@ main, .page { animation: page-enter var(--dur-slow) var(--ease-out); }
 .anim-pop   { animation: pop-in 0.55s var(--ease-spring) both; }
 .anim-stamp { animation: stamp-in 0.45s var(--ease-out) both; }
 
-/* 滚动揭示 */
-.reveal { opacity: 0; }
-.reveal.is-visible { animation: rise-in 0.55s var(--ease-out) both; }
-
 /* 笔锋自绘 */
 .swoosh path {
   stroke-dasharray: 1;
@@ -1345,7 +1341,8 @@ a.point-card:hover .point-cover img { transform: scale(1.045); }
 
 /* 点位编辑页的站内二维码块 */
 .qr-cell    { text-align: center; }
-.qr-img     { width: 120px; height: 120px; border: 1px solid var(--border); border-radius: var(--r-md); background: #fff; }
+/* 客户端 QrImage 自带白底与内边距，这里只补打印时看得清的那圈描边 */
+.qr-frame   { display: inline-block; border: 1px solid var(--border); border-radius: var(--r-md); }
 .qr-caption { font-size: 0.78rem; color: var(--text-muted); margin: 0.375rem 0; }
 
 

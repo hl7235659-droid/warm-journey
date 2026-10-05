@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { ServicePoint } from '@/lib/types';
 import { SERVICE_TAGS } from '@/lib/types';
 import { api } from '@/lib/api-client';
+import QrImage from '@/components/qr';
 
 const BLANK = (): Partial<ServicePoint> => ({
   name: '', address: '', lat: 0, lng: 0, city: '', district: '', open_hours: '',
@@ -12,6 +13,36 @@ const BLANK = (): Partial<ServicePoint> => ({
   services: [],
   admission: { id_required: false, capacity: undefined, notes: '' },
 });
+
+// 一张可打印张贴的站内二维码。客户端渲染（components/qr 与骑手入店码同一实现），
+// 不再绕服务端 `/api/admin/points/{id}/qr` 生成同样的 SVG。
+function QrBlock({ value, caption, fileName }: { value: string; caption: string; fileName: string }) {
+  const boxRef = useRef<HTMLSpanElement>(null);
+
+  function download() {
+    const svg = boxRef.current?.querySelector('svg');
+    if (!svg) return;
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="qr-cell">
+      <span className="qr-frame" ref={boxRef}>
+        <QrImage value={value} size={120} label={`${caption}二维码`} />
+      </span>
+      <p className="qr-caption">{caption}</p>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={download} style={{ fontSize: '0.78rem' }}>
+        下载 SVG
+      </button>
+    </div>
+  );
+}
 
 export default function AdminPointEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +54,10 @@ export default function AdminPointEditPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
+  // 二维码内容必须是骑手扫码后真实打开的地址，取当前站点的 origin
+  const [origin, setOrigin] = useState('');
+
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
   useEffect(() => {
     // 城市列表不可用时仍可手填
@@ -212,28 +247,20 @@ export default function AdminPointEditPage() {
         </div>
 
         {/* 直达二维码：打印张贴后骑手扫码直达详情页 / 离店 */}
-        {!isNew && (
+        {!isNew && origin && (
           <div className="card">
             <h2 className="panel-title">站内二维码（打印张贴）</h2>
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <div className="qr-cell">
-                <img
-                  src={`/api/admin/points/${id}/qr`}
-                  alt={`${form.name ?? '服务点'} 详情页二维码`}
-                  className="qr-img"
-                />
-                <p className="qr-caption">门口贴 · 直达详情页</p>
-                <a href={`/api/admin/points/${id}/qr`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
-              </div>
-              <div className="qr-cell">
-                <img
-                  src={`/api/admin/points/${id}/qr?type=checkout`}
-                  alt={`${form.name ?? '服务点'} 离店码`}
-                  className="qr-img"
-                />
-                <p className="qr-caption">店内贴 · 扫码离店</p>
-                <a href={`/api/admin/points/${id}/qr?type=checkout`} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>打开大图</a>
-              </div>
+              <QrBlock
+                value={`${origin}/point/${id}`}
+                caption="门口贴 · 直达详情页"
+                fileName={`暖途同行-详情页-${form.name || id}.svg`}
+              />
+              <QrBlock
+                value={`${origin}/checkout/${id}`}
+                caption="店内贴 · 扫码离店"
+                fileName={`暖途同行-离店码-${form.name || id}.svg`}
+              />
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.7, flex: 1, minWidth: '200px' }}>
                 骑手预约后凭手机上的入店码进店（工作人员扫码确认）；离店时扫店内离店码，
                 系统自动释放在店名额并收集满意度反馈。
