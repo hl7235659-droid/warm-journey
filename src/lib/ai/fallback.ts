@@ -1,18 +1,10 @@
 // 本地降级回答（无 Key / 远端失败时的兜底，服务端与演示断网场景共用）
 import { matchSiteHelp } from './site-help';
+import type { PointPromptInfo } from './prompt';
 import type { AiContext, AiAction } from './types';
 
 const NEARBY_INTENT = /(附近|周边|最近|哪有|哪里有|哪里能|有没有|休息|歇脚|充电|喝水|上厕所|躲雨|避雨|位置|有空|有位|挤|人多)/;
 const POINT_REVIEW_INTENT = /(靠谱|口碑|评分|评价|怎么样|好吗|值得|反馈|建议)/;
-
-export interface FallbackPointInfo {
-  name: string;
-  status: string;
-  openHours: string;
-  services: string[];
-  inStore: number;
-  feedbackSummary?: string;
-}
 
 export interface FallbackOptions {
   audience?: 'rider' | 'admin';
@@ -27,7 +19,9 @@ export interface FallbackResult {
 export function localFallback(
   userMessage: string,
   context?: AiContext,
-  point?: FallbackPointInfo,
+  // 站点资料只有一份形状：曾经这里另立一个 FallbackPointInfo（prompt.ts PointPromptInfo
+  // 的字段子集），两处随字段增减就要各改一遍。
+  point?: PointPromptInfo,
   options?: FallbackOptions,
 ): FallbackResult {
   const msg = (userMessage || '').trim();
@@ -63,15 +57,16 @@ export function localFallback(
   }
 
   // 3) 附近/休息意图 + 有定位 → 列最近 3 站 + 在店人数 + 高峰提示 + 一键前往
-  if (NEARBY_INTENT.test(msg) && context && context.nearby.length > 0) {
-    const lines = context.nearby
+  const nearby = context?.nearby ?? []; // 窄请求（如只发 {context:{}}）不能让它炸成 500
+  if (NEARBY_INTENT.test(msg) && nearby.length > 0) {
+    const lines = nearby
       .map((n, i) => {
         const hint = n.crowdHint && n.crowdHint !== '暂无历史规律' ? `，${n.crowdHint}` : '';
         return `${i + 1}. ${n.name}（${n.dist}）：营业 ${n.openHours}，当前在店 ${n.inStore} 人${hint}，服务：${n.services.join('、') || '无'}`;
       })
       .join('\n');
-    const weather = context.weather ? `今天 ${context.weather.city} ${context.weather.text} ${context.weather.temp}°C，` : '';
-    const action: AiAction = { type: 'navigate', params: { pointId: context.nearby[0].id } };
+    const weather = context?.weather ? `今天 ${context.weather.city} ${context.weather.text} ${context.weather.temp}°C，` : '';
+    const action: AiAction = { type: 'navigate', params: { pointId: nearby[0].id } };
     return {
       text:
         `${weather}离你最近的开放驿站：\n${lines}\n\n` +

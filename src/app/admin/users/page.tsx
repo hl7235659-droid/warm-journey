@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useAdmin } from '../admin-context';
+import { useAdmin, useIsSuperAdmin } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
 import type { AdminRole, AdminUser, ApiResponse } from '@/lib/types';
@@ -12,7 +12,7 @@ const BLANK = () => ({ username: '', password: '', role: 'inspector' as AdminRol
 
 export default function AdminUsersPage() {
   const me = useAdmin();
-  const isSuper = me?.role === 'super_admin';
+  const isSuper = useIsSuperAdmin();
   const [forbidden, setForbidden] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(BLANK());

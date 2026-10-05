@@ -56,20 +56,13 @@ const BodySchema = z.object({
 });
 
 function localResponse(text: string, action?: ChatResponse['action']): Response {
-  const body: ChatResponse = { ok: true, mode: 'local', text, action };
-  return Response.json(body, { headers: { 'X-Ai-Mode': 'local' } });
+  // 降级事实已经在 body.mode 里（响应头的 X-Ai-Mode 写一次零读取，删）
+  return Response.json({ ok: true, mode: 'local', text, action } satisfies ChatResponse);
 }
 
 // POST /api/ai/chat
 export async function POST(req: Request) {
   const { env } = getRequestContext();
-  const e = env as unknown as {
-    JWT_SECRET?: string;
-    AI_BASE_URL?: string;
-    AI_API_KEY?: string;
-    AI_MODEL?: string;
-    AI_ALLOWED_HOSTS?: string;
-  };
 
   // 管理端受众（AI 周报等）必须先过管理员鉴权
   let body: unknown;
@@ -78,7 +71,7 @@ export async function POST(req: Request) {
   }
   const audienceProbe = (body as { audience?: unknown } | null)?.audience;
   if (audienceProbe === 'admin') {
-    const auth = await requireAdmin(req, e);
+    const auth = await requireAdmin(req, env);
     if (auth instanceof Response) return auth;
   }
 
@@ -185,18 +178,18 @@ export async function POST(req: Request) {
   let model = '';
   let temperature = 0.3;
   if (input.provider) {
-    const v = validateBaseUrl(input.provider.baseUrl, e.AI_ALLOWED_HOSTS);
+    const v = validateBaseUrl(input.provider.baseUrl, env.AI_ALLOWED_HOSTS);
     if (!v.ok) return jsonErr(`提供商地址无效：${v.error}`, 422);
     baseUrl = v.url;
     apiKey = input.provider.apiKey;
     model = input.provider.model;
     temperature = input.provider.temperature ?? 0.3;
-  } else if (e.AI_BASE_URL && e.AI_API_KEY && e.AI_MODEL) {
-    const v = validateBaseUrl(e.AI_BASE_URL, e.AI_ALLOWED_HOSTS);
+  } else if (env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL) {
+    const v = validateBaseUrl(env.AI_BASE_URL, env.AI_ALLOWED_HOSTS);
     if (v.ok) {
       baseUrl = v.url;
-      apiKey = e.AI_API_KEY;
-      model = e.AI_MODEL;
+      apiKey = env.AI_API_KEY;
+      model = env.AI_MODEL;
     }
   }
 
@@ -260,7 +253,7 @@ export async function POST(req: Request) {
 function remoteFailedFallback(
   userMessage: string,
   context: AiContext | undefined,
-  point: import('@/lib/ai/fallback').FallbackPointInfo | undefined,
+  point: PointPromptInfo | undefined,
   reason: string,
   options?: import('@/lib/ai/fallback').FallbackOptions,
 ): Response {

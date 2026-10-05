@@ -4,8 +4,6 @@ import type {
 } from '@/lib/types';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
 
-export type D1Env = { DB: D1Database };
-
 // ---------------------------------------------------------------------------
 // Service Points
 // ---------------------------------------------------------------------------

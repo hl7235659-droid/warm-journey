@@ -82,24 +82,14 @@ export interface WeatherInfo {
 export interface AiContext {
   now: string;                // '2026-10-05 14:30 周一'
   weather: WeatherInfo | null;
-  nearby: NearbyPointInfo[];  // 最近 3 个开放站点（无定位时为空）
+  // 可选：/api/ai/chat 的入参 zod 里 nearby 本就是 optional，公开端点可以被只发
+  // {context:{}} 打进来，读 .length 会 TypeError 变 500（消费点一律用 ?.length）
+  nearby?: NearbyPointInfo[];  // 最近 3 个开放站点（无定位时为空）
 }
 
 // ---------- 聊天 API 契约（/api/ai/chat） ----------
-export interface ChatProviderConfig {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  temperature?: number;
-}
-
-export interface ChatRequest {
-  provider?: ChatProviderConfig;   // 前端从 localStorage 读出随请求发；缺失时用服务端环境变量兜底
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>; // 最近 12 条
-  pointId?: string;                // 详情页上下文
-  context?: AiContext;             // 前端刚取的动态上下文
-}
-
+// 请求体的形状由 chat/route.ts 的 BodySchema（zod）单点定义，客户端 AiDock 按它拼 body；
+// 这里只声明响应——曾经的 ChatRequest/ChatProviderConfig 两份手抄契约零引用，已删。
 export interface ChatResponse {
   ok: boolean;
   mode: 'remote' | 'local';

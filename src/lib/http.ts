@@ -5,16 +5,6 @@ import { requireAdmin, requireActiveAdmin, requireRole, type AdminPayload } from
 import { ID_RE } from '@/lib/types';
 import { z } from 'zod';
 
-export interface CloudflareEnvLike {
-  DB: D1Database;
-  BUCKET?: R2Bucket;
-  JWT_SECRET?: string;
-  AI_BASE_URL?: string;
-  AI_API_KEY?: string;
-  AI_MODEL?: string;
-  AI_ALLOWED_HOSTS?: string;
-}
-
 type RouteCtx<P> = { params: Promise<P> };
 
 // 写操作角色白名单唯一来源。第三种组合 ["super_admin","admin","inspector"]
@@ -40,7 +30,7 @@ export function assertId(id: string): Response | undefined {
 
 interface WithAdminArgs<P> {
   req: Request;
-  env: CloudflareEnvLike;
+  env: CloudflareEnv;
   auth: AdminPayload;
   params: P;
 }
@@ -54,11 +44,12 @@ export function withAdmin<P = Record<string, string>>(
   opts: { roles?: readonly string[]; active?: boolean } = {},
 ) {
   return async (req: Request, routeCtx: RouteCtx<P>): Promise<Response> => {
+    // getRequestContext().env 的类型就是全局 CloudflareEnv（src/env.d.ts 声明合并），
+    // 不需要再 as unknown as 一份影子接口
     const { env } = getRequestContext();
-    const e = env as unknown as CloudflareEnvLike;
     const auth = opts.active
-      ? await requireActiveAdmin(req, e)
-      : await requireAdmin(req, e);
+      ? await requireActiveAdmin(req, env)
+      : await requireAdmin(req, env);
     if (auth instanceof Response) return auth;
     if (opts.roles) {
       const deny = requireRole(auth, opts.roles);
@@ -66,7 +57,7 @@ export function withAdmin<P = Record<string, string>>(
     }
     const params = (routeCtx ? await routeCtx.params : {}) as P;
     try {
-      return await handler({ req, env: e, auth, params });
+      return await handler({ req, env, auth, params });
     } catch (err) {
       if (err instanceof Response) return err; // 业务响应可直接抛出，勿被压成 500
       console.error('admin route error:', (err as { message?: string })?.message ?? 'unknown');

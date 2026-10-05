@@ -17,7 +17,6 @@ const BodySchema = z.object({
 // 限流每 IP 每分钟 10 次；服务端环境变量 Key 仅对已登录管理员开放（防匿名白嫖服务器配额）。
 export async function POST(req: Request) {
   const { env } = getRequestContext();
-  const e = env as unknown as { JWT_SECRET?: string; AI_API_KEY?: string; AI_ALLOWED_HOSTS?: string };
 
   const ip = getClientIp(req);
   if (!(await checkRateLimit(env.DB, `aitest:${ip}`, { limit: 10, windowSec: 60 }))) {
@@ -31,15 +30,15 @@ export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonErr('参数验证失败', 422);
 
-  const v = validateBaseUrl(parsed.data.baseUrl, e.AI_ALLOWED_HOSTS);
+  const v = validateBaseUrl(parsed.data.baseUrl, env.AI_ALLOWED_HOSTS);
   if (!v.ok) return jsonErr(`地址无效：${v.error}`, 422);
 
   // 请求体没带 key 时，仅管理员可用服务端配置测试"演示提供商"
   let apiKey = parsed.data.apiKey;
   if (!apiKey) {
-    const auth = await requireAdmin(req, e);
+    const auth = await requireAdmin(req, env);
     if (auth instanceof Response) return jsonErr('缺少 API Key（服务端密钥仅管理员可用）', 401);
-    apiKey = e.AI_API_KEY || '';
+    apiKey = env.AI_API_KEY || '';
   }
   if (!apiKey) return jsonErr('缺少 API Key（本机未填，服务器也未配置）', 422);
 

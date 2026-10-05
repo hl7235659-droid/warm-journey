@@ -89,12 +89,13 @@ export function buildMessages(input: PromptInput): WireMessage[] {
 
   if (input.context) {
     const c = input.context;
+    const nearby = c.nearby ?? []; // 同 fallback：公开端点可能不带 nearby
     let body = `当前时间：${c.now}`;
     if (c.weather) body += `\n天气：${c.weather.city} ${c.weather.text} ${c.weather.temp}°C${c.weather.warning ? `（${c.weather.warning}）` : ''}`;
-    if (c.nearby.length > 0) {
+    if (nearby.length > 0) {
       body +=
         '\n附近开放驿站（按距离）：\n' +
-        c.nearby
+        nearby
           .map(
             (n) =>
               `- ${n.name}（${n.dist}，id: ${n.id}）：营业 ${n.openHours}，在店 ${n.inStore} 人，服务：${n.services.join('、') || '无'}，客流：${n.crowdHint}`,

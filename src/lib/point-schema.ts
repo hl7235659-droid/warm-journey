@@ -28,9 +28,7 @@ const PointFields = {
 };
 
 export const PointCreateSchema = z.object(PointFields);
-export type PointCreateInput = z.infer<typeof PointCreateSchema>;
 
 // PUT：缺省字段表示"不修改"（zod 的 optional 短路，不会套用 default）
 export const PointUpdateSchema = PointCreateSchema.partial()
   .extend({ change_summary: z.string().max(200).optional() });
-export type PointUpdateInput = z.infer<typeof PointUpdateSchema>;

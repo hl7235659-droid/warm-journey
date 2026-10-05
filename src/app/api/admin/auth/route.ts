@@ -43,10 +43,9 @@ export async function POST(req: Request) {
 
   await updateLastLogin(env.DB, user.id);
 
-  const jwtEnv = env as unknown as { JWT_SECRET?: string };
   const token = await signToken(
     { sub: user.id, username: user.username, role: user.role, display_name: user.display_name },
-    jwtEnv,
+    env,
   );
 
   // HTTPS 站点必须带 Secure：防止 Cookie 经明文 HTTP 泄露

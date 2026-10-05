@@ -139,19 +139,10 @@ export interface AdminUser {  id: string;
   last_login_at: number | null;
 }
 
-// API response wrappers
-export interface ApiSuccess<T> {
-  ok: true;
-  data: T;
-}
-
-export interface ApiError {
-  ok: false;
-  error: string;
-  code?: string;
-}
-
-export type ApiResponse<T> = ApiSuccess<T> | ApiError;
+// API response wrappers：全部接口唯一的响应信封（判别联合，`api()` 消费）
+export type ApiResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 // Pagination
 export interface PagedResult<T> {
