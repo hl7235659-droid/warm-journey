@@ -12,7 +12,8 @@ export type ReportStatus = 'pending' | 'processing' | 'resolved' | 'closed';
 export type WorkOrderStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type InspectionResult = 'pass' | 'fail' | 'partial';
-export type AdminRole = 'super_admin' | 'admin' | 'inspector';
+export const ADMIN_ROLES = ['super_admin', 'admin', 'inspector'] as const;
+export type AdminRole = typeof ADMIN_ROLES[number];
 export type VisitStatus = 'reserved' | 'in_store' | 'completed' | 'cancelled' | 'expired';
 
 // DB 主键形态（唯一来源）：真实数据为 16 位小写 hex（randomblob(8)），seed 数据为 point001 风格
@@ -207,6 +208,12 @@ export const INSPECTION_RESULT_LABELS: Record<InspectionResult, string> = {
   pass: '通过',
   fail: '未通过',
   partial: '部分通过',
+};
+
+export const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
+  super_admin: '超级管理员',
+  admin: '管理员',
+  inspector: '巡检员',
 };
 
 export const SERVICE_TAGS = [
