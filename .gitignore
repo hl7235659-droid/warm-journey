@@ -38,3 +38,6 @@ next-env.d.ts
 # agent / artifacts
 .workbuddy-ai/
 /warm-journey-deploy.tar.gz
+
+# EPERM workaround residues
+.next.bak*/
