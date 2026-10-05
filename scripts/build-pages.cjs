@@ -16,6 +16,35 @@ const fs = require('fs');
 const root = path.resolve(__dirname, '..');
 const shim = path.join(__dirname, 'win-symlink-shim.cjs');
 
+// 依赖版本闸：1.13.10 同时缺两样东西——__import_unsupported 运行时守卫（同 isolate 内
+// 第二个起加载的路由 500）与 `/` → index 的路由映射（首页返回纯文本 "Not Found"）。
+// 两者都会让站点"看起来在跑、其实首页是坏的"，所以纯净 npm ci 装回旧版时必须当场失败。
+const MIN_NOP_VERSION = '1.13.16';
+function verifyNextOnPagesVersion() {
+  const pkgPath = path.join(root, 'node_modules', '@cloudflare', 'next-on-pages', 'package.json');
+  let ver = 'unknown';
+  try {
+    ver = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+  } catch { /* 未安装时由后面的补丁步骤报错 */ }
+  const cmp = (a, b) => {
+    const pa = String(a).split('.').map(Number);
+    const pb = String(b).split('.').map(Number);
+    for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+    return 0;
+  };
+  if (ver === 'unknown' || cmp(ver, MIN_NOP_VERSION) < 0) {
+    console.error(
+      `\n✗ @cloudflare/next-on-pages 实装版本 ${ver}，本项目要求 >= ${MIN_NOP_VERSION}。\n` +
+      '  旧版会同时丢失运行时守卫与首页路由映射（2026-10-05 生产事故的第二半）。\n' +
+      `  修复：npm install --save-exact @cloudflare/next-on-pages@${MIN_NOP_VERSION}\n` +
+      '  若确要升级更高版本，改本文件后必须重跑冒烟并核对 `GET /` 返回 text/html。',
+    );
+    process.exit(1);
+  }
+  console.log(`✓ next-on-pages 版本 ${ver}（要求 >= ${MIN_NOP_VERSION}）`);
+}
+verifyNextOnPagesVersion();
+
 // next-on-pages CLI（package-manager-manager 依赖）在启动时用 shellac 直接 spawn
 // `npm --version`，Windows 上 npm 是 npm.cmd，无 shell spawn 必然 ENOENT，
 // CLI 直接 exit 1。此处幂等修补 dist/index.js：失败时返回占位版本号（仅用于
@@ -51,7 +80,7 @@ function patchNextOnPagesNpmCheck() {
     } catch { /* ignore */ }
     console.error(
       '\n✗ 无法定位 next-on-pages 的 npm 版本检查代码（CLI 版本可能已更新），\n' +
-      `  当前安装版本：@cloudflare/next-on-pages@${ver}（锁定版本为 1.13.10，勿轻易升级），\n` +
+      `  当前安装版本：@cloudflare/next-on-pages@${ver}（锁定版本为 1.13.16，勿降回 1.13.10），\n` +
       '  请检查 node_modules/@cloudflare/next-on-pages/dist/index.js 中的 f2 函数。',
     );
     process.exit(1);
@@ -61,17 +90,23 @@ function patchNextOnPagesNpmCheck() {
   console.log('✓ 已修补 next-on-pages 的 npm 版本检查（Windows npm.cmd spawn 兼容）');
 }
 
-// next-on-pages 1.13.10 的 _worker.js 模板缺少 1.13.16 起内置的两个运行时守卫：
-//  1) __import_unsupported 的 defineProperty 幂等保护——Pages 把所有函数跑在同一
-//     个 isolate，几十个路由包会重复执行同一段 defineProperty(globalThis,...)，
-//     无守卫时第二个起即抛 "TypeError: Cannot redefine property: __import_unsupported"
-//     （2026-10-05 生产 500 事故根因，仅首个被加载的路由可用）。
-//  2) PatchedAbortController——规避 Next.js 在 global scope 构造 AbortController
-//     被 workerd 以 "Disallowed operation called within global scope" 拒绝。
+// next-on-pages 必须锁 1.13.16，不要降回 1.13.10。1.13.10 相对 1.13.16 缺两处能力，
+// 且两处都不是"构建脚本补一下"就能等价还原的：
+//  1) _worker.js 模板里的两个运行时守卫（1.13.16 起内置）：
+//     a. __import_unsupported 的 defineProperty 幂等保护——Pages 把所有函数跑在同一
+//        个 isolate，几十个路由包会重复执行同一段 defineProperty(globalThis,...)，
+//        无守卫时第二个起即抛 "TypeError: Cannot redefine property: __import_unsupported"
+//        （2026-10-05 生产 500 事故根因，仅首个被加载的路由可用）。
+//     b. PatchedAbortController——规避 Next.js 在 global scope 构造 AbortController
+//        被 workerd 以 "Disallowed operation called within global scope" 拒绝。
+//  2) 根路径 `/` → index 函数的路由映射。1.13.10 生成的路由表里，除 RSC 分支外没有
+//     任何一条把 `/` 指向 /index，请求落到资产层后返回纯文本 "Not Found"（HTTP 200、
+//     9 字节），而 /index 与其余全部页面正常——即首页整页不可访问。
 // 历史部署一直正常，是因为当时 node_modules 实为 1.13.16；2026-10-05 21:25 一次
-// npm install 按 lockfile 把它降回 1.13.10，守卫随之消失。npm install 随时可能
-// 再次洗掉本补丁，故每次构建前自愈式补回；模板结构变化（升级 next-on-pages）
-// 时锚点失配 → fail-loud，绝不静默带病出包。
+// npm install 按 lockfile 把它降回 1.13.10，守卫随之消失（首页 404 同期出现，
+// 但当时只修了守卫）。npm install 随时可能再次洗掉本补丁，故每次构建前自愈式补回；
+// 模板结构变化（升级 next-on-pages）时锚点失配 → fail-loud，绝不静默带病出包。
+// 出包后请跑 scripts/smoke-routes.cjs，并额外核对 `GET /` 返回 text/html。
 const TEMPLATE_GUARD_LINES = [
   'const originalDefineProperty = Object.defineProperty;',
   '',
@@ -160,7 +195,7 @@ function patchNextOnPagesTemplateGuard() {
     } catch { /* ignore */ }
     console.error(
       '\n✗ 无法在 next-on-pages 模板中定位唯一锚点 "export default {"\n' +
-      `  当前安装版本：@cloudflare/next-on-pages@${ver}（锁定版本为 1.13.10，勿轻易升级）。\n` +
+      `  当前安装版本：@cloudflare/next-on-pages@${ver}（锁定版本为 1.13.16，勿降回 1.13.10）。\n` +
       '  模板结构可能已变化，请人工核对 scripts/build-pages.cjs 的守卫补丁后再构建。',
     );
     process.exit(1);

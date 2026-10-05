@@ -14,6 +14,8 @@
 // 判定：
 //   - 任意 500，或响应体含 __import_unsupported / Cannot redefine → FAIL
 //   - GET 公开路由必须 200；confirm 无 token 必须 4xx（200 = 还在跑修复前代码）
+//   - 标记为 html 的路由还必须真的返回 HTML：next-on-pages 1.13.10 丢根路由映射时，
+//     `GET /` 是 HTTP 200 + text/plain "Not Found"，只看状态码会漏掉整站首页。
 
 const base = (process.argv[2] || '').replace(/\/+$/, '');
 if (!base || !/^https?:\/\//.test(base)) {
@@ -28,6 +30,7 @@ for (let k = 2; k < process.argv.length; k++) {
 }
 
 const GET_ROUTES = [
+  ['/', [200], 'html'],
   ['/api/points', [200]],
   ['/api/cities', [200]],
   ['/api/visits/demo000visit01', [200]],
@@ -42,19 +45,26 @@ const POST_ROUTES = [
 let total = 0;
 let failed = 0;
 
-async function hit(method, path, accept) {
+async function hit(method, path, accept, expect) {
   total++;
   const tag = `${method.padEnd(4)} ${path}`;
   try {
     const res = await fetch(base + path, { method });
     const body = await res.text();
     const redefine = /__import_unsupported|Cannot redefine property/i.test(body);
+    const htmlBad = expect === 'html' && (
+      !(res.headers.get('content-type') || '').includes('text/html') || body.trim() === 'Not Found'
+    );
     if (redefine) {
       failed++;
       console.log(`  ${tag} → ${res.status} ✗ 响应含 __import_unsupported 错误签名`);
     } else if (res.status === 500) {
       failed++;
       console.log(`  ${tag} → 500 ✗ ${body.replace(/\s+/g, ' ').slice(0, 110)}`);
+    } else if (htmlBad) {
+      failed++;
+      console.log(`  ${tag} → ${res.status} ✗ 未返回真实 HTML（content-type=${res.headers.get('content-type')}，` +
+        `路由表可能缺该路径的映射）`);
     } else if (!accept.includes(res.status)) {
       failed++;
       const hint = path.includes('confirm') && res.status === 200
@@ -74,7 +84,7 @@ async function hit(method, path, accept) {
   console.log(`${rounds} 轮 × ${GET_ROUTES.length + POST_ROUTES.length} 请求，同一实例顺序连打\n`);
   for (let r = 1; r <= rounds; r++) {
     console.log(`—— 第 ${r}/${rounds} 轮 ——`);
-    for (const [p, acc] of GET_ROUTES) await hit('GET', p, acc);
+    for (const [p, acc, expect] of GET_ROUTES) await hit('GET', p, acc, expect);
     for (const [p, acc] of POST_ROUTES) await hit('POST', p, acc);
   }
   console.log(`\n结果：${total - failed}/${total} 通过，${failed} 失败`);
