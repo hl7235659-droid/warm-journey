@@ -1,15 +1,8 @@
--- 初始管理员账户（用户名 admin / 密码 admin123，生产环境请立即更换）
--- bcrypt hash of 'admin123' with salt rounds 10
-INSERT OR IGNORE INTO admin_users (id, username, password_hash, role, display_name)
-VALUES (
-  'seed0000admin1',
-  'admin',
-  '$2a$10$bRv/rMI1tkybYu8TV3mYtejd.EuGzxunrYPjnzRnOhn3o2uvDaX7G',
-  'super_admin',
-  '系统管理员'
-);
+-- 暖途同行 演示数据（仅本地 / 演示环境使用，禁止对生产库执行）
+-- 管理员账号不再随 seed 写入：本地用 scripts/create-admin.mjs 交互式创建，
+-- 生产用 ADMIN_USERNAME / ADMIN_PASSWORD 环境变量一次性创建（见 scripts/create-admin.mjs）。
 
--- 示例服务点（广州大学城 / 番禺区小谷围岛）
+-- 示例服务点（广州大学城 / 番禺区小谷围岛）——电话为演示占位号，非真实号码
 INSERT OR IGNORE INTO service_points
   (id, name, address, lat, lng, city, district, contact_phone,
    open_hours, status, services, admission, notes, created_by)
@@ -20,13 +13,13 @@ VALUES
   '广州市番禺区大学城贝岗村贝岗大街12号首层',
   23.0525, 113.3790,
   '广州', '番禺区',
-  '020-31234567',
+  '020-00000001',
   '周一至周日 07:00–23:00',
   'open',
   '["休息区","充电","饮用水","急救箱","厕所"]',
   '{"id_required":true,"capacity":20,"notes":"需出示骑手码"}',
   '二楼设有微波炉，雨天可免费借用雨衣；紧邻贝岗商业街，取餐高峰避雨方便',
-  'seed0000admin1'
+  NULL
 ),
 (
   'point002',
@@ -34,13 +27,13 @@ VALUES
   '广州市番禺区大学城小谷围街中环东路188号',
   23.0620, 113.3900,
   '广州', '番禺区',
-  '020-38765432',
+  '020-00000002',
   '全天24小时',
   'open',
   '["休息区","充电","饮用水","Wi-Fi","停车"]',
   '{"id_required":true,"capacity":15}',
   '紧邻地铁大学城北站A口，配有热水、茶叶，停车场免费1小时',
-  'seed0000admin1'
+  NULL
 ),
 (
   'point003',
@@ -48,13 +41,13 @@ VALUES
   '广州市番禺区大学城中心湖公园东侧环路6号',
   23.0520, 113.3860,
   '广州', '番禺区',
-  '020-31223344',
+  '020-00000003',
   '周一至周五 08:00–20:00，周末 09:00–18:00',
   'open',
   '["休息区","充电","饮用水","急救箱","雨具","餐饮","Wi-Fi"]',
   '{"id_required":false,"capacity":30,"notes":"所有骑手均可使用"}',
   '免费提供午餐（11:00–13:00），需凭骑手工牌；环湖绿道可短时停车',
-  'seed0000admin1'
+  NULL
 );
 
 -- 开通城市（示例：广州，视野中心 = 大学城）
@@ -117,18 +110,18 @@ VALUES
 -- checked_in_at 用 unixepoch() 相对时间，保证任何时间部署都"新鲜"；7/14 天前即同星期同时段
 INSERT OR IGNORE INTO visits (id, point_id, rider_token, status, reserved_at, checked_in_at, checked_out_at, created_at)
 VALUES
-  ('demo000visit01', 'point001', 'demotoken0001', 'completed', unixepoch()-7*86400-1800,  unixepoch()-7*86400,  unixepoch()-7*86400+5400, unixepoch()-7*86400-1800),
-  ('demo000visit02', 'point001', 'demotoken0002', 'completed', unixepoch()-14*86400-1800, unixepoch()-14*86400, unixepoch()-14*86400+4800, unixepoch()-14*86400-1800),
-  ('demo000visit03', 'point001', 'demotoken0003', 'completed', unixepoch()-6*86400-3600,  unixepoch()-6*86400,  unixepoch()-6*86400+3600,  unixepoch()-6*86400-3600),
-  ('demo000visit04', 'point001', 'demotoken0004', 'completed', unixepoch()-5*86400-7200,  unixepoch()-5*86400,  unixepoch()-5*86400+7200, unixepoch()-5*86400-7200),
-  ('demo000visit05', 'point001', 'demotoken0005', 'completed', unixepoch()-3*86400-1800,  unixepoch()-3*86400,  unixepoch()-3*86400+4200, unixepoch()-3*86400-1800),
-  ('demo000visit06', 'point001', 'demotoken0006', 'completed', unixepoch()-2*86400-2400,  unixepoch()-2*86400,  unixepoch()-2*86400+6000, unixepoch()-2*86400-2400),
-  ('demo000visit07', 'point001', 'demotoken0007', 'completed', unixepoch()-1*86400-1500,  unixepoch()-1*86400,  unixepoch()-1*86400+3000, unixepoch()-1*86400-1500),
-  ('demo000visit08', 'point003', 'demotoken0008', 'completed', unixepoch()-4*86400-900,   unixepoch()-4*86400,  unixepoch()-4*86400+5400, unixepoch()-4*86400-900),
-  ('demo000visit09', 'point003', 'demotoken0009', 'completed', unixepoch()-2*86400-600,   unixepoch()-2*86400,  unixepoch()-2*86400+3600, unixepoch()-2*86400-600),
-  ('demo000visit10', 'point002', 'demotoken0010', 'completed', unixepoch()-3*86400-2700,  unixepoch()-3*86400,  unixepoch()-3*86400+4500, unixepoch()-3*86400-2700),
+  ('demo000visit01', 'point001', 'decafbad00000001', 'completed', unixepoch()-7*86400-1800,  unixepoch()-7*86400,  unixepoch()-7*86400+5400, unixepoch()-7*86400-1800),
+  ('demo000visit02', 'point001', 'decafbad00000002', 'completed', unixepoch()-14*86400-1800, unixepoch()-14*86400, unixepoch()-14*86400+4800, unixepoch()-14*86400-1800),
+  ('demo000visit03', 'point001', 'decafbad00000003', 'completed', unixepoch()-6*86400-3600,  unixepoch()-6*86400,  unixepoch()-6*86400+3600,  unixepoch()-6*86400-3600),
+  ('demo000visit04', 'point001', 'decafbad00000004', 'completed', unixepoch()-5*86400-7200,  unixepoch()-5*86400,  unixepoch()-5*86400+7200, unixepoch()-5*86400-7200),
+  ('demo000visit05', 'point001', 'decafbad00000005', 'completed', unixepoch()-3*86400-1800,  unixepoch()-3*86400,  unixepoch()-3*86400+4200, unixepoch()-3*86400-1800),
+  ('demo000visit06', 'point001', 'decafbad00000006', 'completed', unixepoch()-2*86400-2400,  unixepoch()-2*86400,  unixepoch()-2*86400+6000, unixepoch()-2*86400-2400),
+  ('demo000visit07', 'point001', 'decafbad00000007', 'completed', unixepoch()-1*86400-1500,  unixepoch()-1*86400,  unixepoch()-1*86400+3000, unixepoch()-1*86400-1500),
+  ('demo000visit08', 'point003', 'decafbad00000008', 'completed', unixepoch()-4*86400-900,   unixepoch()-4*86400,  unixepoch()-4*86400+5400, unixepoch()-4*86400-900),
+  ('demo000visit09', 'point003', 'decafbad00000009', 'completed', unixepoch()-2*86400-600,   unixepoch()-2*86400,  unixepoch()-2*86400+3600, unixepoch()-2*86400-600),
+  ('demo000visit10', 'point002', 'decafbad00000010', 'completed', unixepoch()-3*86400-2700,  unixepoch()-3*86400,  unixepoch()-3*86400+4500, unixepoch()-3*86400-2700),
   -- 当前在店 1 人（在店人数演示）
-  ('demo000visit11', 'point001', 'demotoken0011', 'in_store',   unixepoch()-1200,        unixepoch()-600,     NULL,                  unixepoch()-1200);
+  ('demo000visit11', 'point001', 'decafbad00000011', 'in_store',   unixepoch()-1200,        unixepoch()-600,     NULL,                  unixepoch()-1200);
 
 INSERT OR IGNORE INTO visit_feedback (id, visit_id, point_id, rating, supports, suggestion, created_at)
 VALUES

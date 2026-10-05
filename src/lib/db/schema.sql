@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS reports (
   status      TEXT NOT NULL DEFAULT 'pending'
                CHECK(status IN ('pending','processing','resolved','closed')),
   created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
-  work_order_id TEXT REFERENCES work_orders(id)
+  work_order_id TEXT REFERENCES work_orders(id),
+  query_code  TEXT                          -- 免登录查询码（高熵，独立于 id）
 );
 
 -- 工单
@@ -79,6 +80,9 @@ CREATE TABLE IF NOT EXISTS work_orders (
   updated_at  INTEGER NOT NULL DEFAULT (unixepoch()),
   created_by  TEXT REFERENCES admin_users(id)
 );
+-- 同一上报只允许关联一个工单（并发自动建单 / 手动重复建单兜底）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_report
+  ON work_orders(report_id) WHERE report_id IS NOT NULL;
 
 -- 巡检记录
 CREATE TABLE IF NOT EXISTS inspections (
@@ -98,8 +102,10 @@ CREATE TABLE IF NOT EXISTS inspections (
 CREATE TABLE IF NOT EXISTS point_confirms (
   id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
   point_id    TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
+  rider_token TEXT,
   created_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
+CREATE INDEX IF NOT EXISTS idx_confirms_token ON point_confirms(point_id, rider_token, created_at);
 
 -- 开通城市（多城市扩展：首页筛选 + 地图默认视野）
 CREATE TABLE IF NOT EXISTS cities (
@@ -116,6 +122,8 @@ CREATE TABLE IF NOT EXISTS visits (
   id            TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
   point_id      TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
   rider_token   TEXT NOT NULL,
+  created_ip    TEXT,
+  checkin_code  TEXT,                     -- 一次性入店码：二维码携带，防仅凭 visit id 远程确认
   status        TEXT NOT NULL DEFAULT 'reserved'
                   CHECK(status IN ('reserved','in_store','completed','cancelled','expired')),
   reserved_at   INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -123,6 +131,10 @@ CREATE TABLE IF NOT EXISTS visits (
   checked_out_at INTEGER,
   created_at    INTEGER NOT NULL DEFAULT (unixepoch())
 );
+-- 同一点位同一骑手至多一条进行中记录（并发重复预约兜底）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_active_rider
+  ON visits(point_id, rider_token) WHERE status IN ('reserved','in_store');
+CREATE INDEX IF NOT EXISTS idx_visits_ip ON visits(created_ip, status) WHERE created_ip IS NOT NULL;
 
 -- 离店满意度反馈（一次 visit 一条）
 CREATE TABLE IF NOT EXISTS visit_feedback (
@@ -140,13 +152,23 @@ CREATE INDEX IF NOT EXISTS idx_points_city    ON service_points(city);
 CREATE INDEX IF NOT EXISTS idx_history_point  ON point_history(point_id);
 CREATE INDEX IF NOT EXISTS idx_reports_point  ON reports(point_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_query_code ON reports(query_code) WHERE query_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_status  ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_point   ON work_orders(point_id);
 CREATE INDEX IF NOT EXISTS idx_inspections_point ON inspections(point_id);
 CREATE INDEX IF NOT EXISTS idx_confirms_point  ON point_confirms(point_id);
 CREATE INDEX IF NOT EXISTS idx_visits_point_status ON visits(point_id, status);
+CREATE INDEX IF NOT EXISTS idx_visits_status   ON visits(status);
 CREATE INDEX IF NOT EXISTS idx_visits_rider    ON visits(rider_token, status);
 CREATE INDEX IF NOT EXISTS idx_feedback_point  ON visit_feedback(point_id);
+
+-- 上传台账：upload 签发的 key 与上传者 IP 记账，上报引用时校验归属
+CREATE TABLE IF NOT EXISTS uploads (
+  key        TEXT PRIMARY KEY,
+  ip         TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_uploads_ip ON uploads(ip, created_at);
 
 -- AI 助手业务知识库（管理端维护，小暖检索注入 prompt）
 CREATE TABLE IF NOT EXISTS ai_knowledge (
