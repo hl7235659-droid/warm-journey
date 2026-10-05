@@ -56,7 +56,7 @@ export interface ChatMessage {
 
 export interface ChatSession {
   id: string;
-  title: string;              // 首条用户消息前 20 字自动生成，可重命名
+  title: string;              // 首条用户消息前 30 字自动生成（setSessionTitle），可重命名
   pointId?: string;           // 详情页"问小暖"打开时绑定站点上下文
   messages: ChatMessage[];
   createdAt: number;

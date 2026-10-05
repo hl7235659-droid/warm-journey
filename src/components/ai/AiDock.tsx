@@ -49,14 +49,13 @@ export default function AiDock() {
   // sessionsRef 是唯一数据源：commit 内同步更新，避免连续更新读到 stale 快照
   const sessionsRef = useRef<ChatSession[]>([]);
   const activeIdRef = useRef<string | null>(null);
-  const hydrated = useRef(false);
 
+  // activeIdRef 是唯一数据源，所以先按 ref 算出新值写回、再同步 React state。
+  // 原来把写 ref 放在 setActiveId 的 updater 里，等于在 React 可丢弃/重跑的纯函数里做副作用。
   const setActiveIdBoth = useCallback((id: string | null | ((cur: string | null) => string | null)) => {
-    setActiveId((prev) => {
-      const next = typeof id === 'function' ? (id as (cur: string | null) => string | null)(prev) : id;
-      activeIdRef.current = next;
-      return next;
-    });
+    const next = typeof id === 'function' ? id(activeIdRef.current) : id;
+    activeIdRef.current = next;
+    setActiveId(next);
   }, []);
 
   // 会话提交：ref 即时更新 + 持久化 + 同步 React state
@@ -74,7 +73,6 @@ export default function AiDock() {
     sessionsRef.current = ss;
     setSessions(ss);
     if (ss.length > 0) setActiveIdBoth(ss[0].id);
-    hydrated.current = true;
   }, [setActiveIdBoth]);
 
   // 会话不存在时懒创建（保留 pointId 上下文），返回会话 id

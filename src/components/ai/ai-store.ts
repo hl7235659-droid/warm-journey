@@ -11,7 +11,6 @@ const SESSIONS_KEY = 'wj_ai_sessions';
 
 export const MAX_SESSIONS = 20;
 export const MAX_MESSAGES_PER_SESSION = 60;
-export const MESSAGES_PER_REQUEST = 12; // 发送时只带最近 12 条
 
 function readKeyMap(): Record<string, string> {
   try {
@@ -100,11 +99,6 @@ export function newSession(pointId?: string): ChatSession {
   return { id: genLocalId(), title: '新会话', pointId, messages: [], createdAt: now, updatedAt: now };
 }
 
-export function titleFromMessage(text: string): string {
-  const t = text.trim().replace(/\s+/g, ' ');
-  return t.length > 20 ? `${t.slice(0, 20)}…` : t || '新会话';
-}
-
 export function appendMessage(sessions: ChatSession[], sessionId: string, msg: ChatMessage): ChatSession[] {
   return sessions.map((s) =>
     s.id === sessionId
@@ -118,17 +112,6 @@ export function setSessionTitle(sessions: ChatSession[], sessionId: string, titl
   return sessions.map((s) => (s.id === sessionId ? { ...s, title: t || '新会话', updatedAt: Date.now() } : s));
 }
 
-export function setSessionPoint(sessions: ChatSession[], sessionId: string, pointId?: string): ChatSession[] {
-  return sessions.map((s) => (s.id === sessionId ? { ...s, pointId, updatedAt: Date.now() } : s));
-}
-
 export function deleteSession(sessions: ChatSession[], sessionId: string): ChatSession[] {
   return sessions.filter((s) => s.id !== sessionId);
-}
-
-// 取发送给后端的历史（最近 12 条）
-export function messagesForRequest(session: ChatSession): Array<{ role: 'user' | 'assistant'; content: string }> {
-  return session.messages
-    .slice(-MESSAGES_PER_REQUEST)
-    .map((m) => ({ role: m.role, content: m.content }));
 }
