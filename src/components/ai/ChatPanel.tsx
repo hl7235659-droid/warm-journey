@@ -99,13 +99,13 @@ export default function ChatPanel({ messages, sending, hasProvider, sessionPoint
           </div>
         )}
 
-        {messages.map((m, i) =>
+        {messages.map((m) =>
           m.role === 'user' ? (
-            <div key={i} className="aidock-row is-user">
+            <div key={`${m.ts}-user`} className="aidock-row is-user">
               <div className="aidock-bubble is-user">{m.content}</div>
             </div>
           ) : (
-            <div key={i} className="aidock-row">
+            <div key={`${m.ts}-ai`} className="aidock-row">
               <div className="aidock-ai-block">
                 <div className="aidock-ai-head">
                   <span className="aidock-avatar" aria-hidden="true"><img src="/images/xiaonuan-avatar.png" alt="" /></span>

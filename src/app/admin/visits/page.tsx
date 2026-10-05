@@ -2,6 +2,7 @@
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useCanWrite } from '../admin-context';
 import type { Visit, VisitFeedback } from '@/lib/types';
 import { VISIT_STATUS_LABELS } from '@/lib/types';
 
@@ -19,8 +20,8 @@ function Stars({ n }: { n: number }) {
 }
 
 export default function AdminVisitsPage() {
+  const canWrite = useCanWrite();
   const [items, setItems] = useState<Visit[]>([]);
-  const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('in_store');
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<VisitFeedback[]>([]);
@@ -35,7 +36,7 @@ export default function AdminVisitsPage() {
       if (status) p.set('status', status);
       const r = await fetch(`/api/admin/visits?${p}`);
       const j = await r.json() as { ok: boolean; data?: { items: Visit[]; total: number } };
-      if (j.ok && j.data) { setItems(j.data.items); setTotal(j.data.total); }
+      if (j.ok && j.data) { setItems(j.data.items); }
     } finally { setLoading(false); }
   }, [status]);
 
@@ -67,7 +68,8 @@ export default function AdminVisitsPage() {
   }
 
   // T3：AI 周报——聚合近 7 天离店反馈（supports 分布 + 建议原文）→ /api/ai/chat
-  // 提供商优先级：本机 wj_ai_providers（C 端悬浮窗配置）→ Pages 环境变量 AI_* → 本地统计摘要
+  // 提供商走服务端 Pages 环境变量 AI_*（audience=admin 需管理员登录）；
+  // 管理端不读取 C 端悬浮窗的本地 provider 配置（避免跨端借用用户个人 Key）。
   async function generateReport() {
     setReportLoading(true);
     setReportText(null);
@@ -91,22 +93,12 @@ export default function AdminVisitsPage() {
         `希望获得的支持分布（被勾选次数）：${dist.length > 0 ? dist.map(([t, n]) => `${t} ${n} 次`).join('、') : '暂无'}\n` +
         (suggestions.length > 0 ? `近期建议原文（最多8条）：\n${suggestions.map(s => `- "${s.slice(0, 60)}"`).join('\n')}` : '近期无文字建议');
 
-      // 本机提供商（与 C 端悬浮窗共用 localStorage）
-      let provider: { baseUrl: string; apiKey: string; model: string; temperature: number } | undefined;
-      try {
-        const store = JSON.parse(localStorage.getItem('wj_ai_providers') ?? 'null') as
-          { providers?: Array<{ id: string; baseUrl: string; apiKey: string; model: string; temperature: number }>; activeId: string | null } | null;
-        const p = store?.providers?.find(x => x.id === store.activeId && x.apiKey);
-        if (p) provider = { baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model, temperature: p.temperature ?? 0.3 };
-      } catch { /* ignore */ }
-
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           audience: 'admin',
           dataText,
-          provider,
           messages: [{ role: 'user', content: '请根据统计数据生成本周离店反馈运营周报。' }],
         }),
       });
@@ -171,7 +163,7 @@ export default function AdminVisitsPage() {
                 <td style={{ padding: '0.625rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtTime(v.checked_in_at)}</td>
                 <td style={{ padding: '0.625rem 0.75rem', fontSize: '0.82rem' }}>{duration(v)}</td>
                 <td style={{ padding: '0.625rem 0.75rem' }}>
-                  {v.status === 'in_store' && (
+                  {v.status === 'in_store' && canWrite && (
                     <button className="btn btn-ghost btn-sm" onClick={() => forceCheckout(v)}>强制离店</button>
                   )}
                 </td>

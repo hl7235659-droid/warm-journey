@@ -1,8 +1,8 @@
 'use client';
 export const runtime = 'edge';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { REPORT_CATEGORY_LABELS } from '@/lib/types';
 import type { ReportCategory } from '@/lib/types';
 
@@ -10,7 +10,6 @@ const CATEGORIES = Object.entries(REPORT_CATEGORY_LABELS) as [ReportCategory, st
 
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [category, setCategory] = useState<ReportCategory>('info_wrong');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -21,6 +20,12 @@ export default function ReportPage() {
   const [contentTouched, setContentTouched] = useState(false);
   const [images, setImages] = useState<{ key: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 卸载时清理复制提示的定时器，防止对已卸载组件 setState
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   // AI 带路预填：?category=facility 等（白名单校验）
   useEffect(() => {
@@ -66,9 +71,9 @@ export default function ReportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ point_id: params.id, category, content: content.trim(), images: images.map(i => i.key) }),
       });
-      const json = await res.json() as { ok: boolean; error?: string; data?: { report_id?: string } };
+      const json = await res.json() as { ok: boolean; error?: string; data?: { query_code?: string } };
       if (!json.ok) { setError(json.error ?? '提交失败，请重试'); return; }
-      const code = json.data?.report_id ?? '';
+      const code = json.data?.query_code ?? '';
       setQueryCode(code);
       if (code) {
         try {
@@ -109,7 +114,8 @@ export default function ReportPage() {
               onClick={() => {
                 navigator.clipboard.writeText(queryCode).then(() => {
                   setCodeCopied(true);
-                  setTimeout(() => setCodeCopied(false), 2000);
+                  if (copyTimer.current) clearTimeout(copyTimer.current);
+                  copyTimer.current = setTimeout(() => setCodeCopied(false), 2000);
                 });
               }}
             >

@@ -16,10 +16,11 @@ interface VisitInfo {
   checked_in_at: number | null;
 }
 
-// 店内人员扫骑手入店码后打开的确认页（visit id 即凭证，无需登录）
+// 店内人员扫骑手入店码后打开的确认页（凭证 = 二维码携带的一次性入店码 ?c=）
 export default function CheckinPage() {
   const { id } = useParams<{ id: string }>();
   const [visit, setVisit] = useState<VisitInfo | null>(null);
+  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,6 +28,11 @@ export default function CheckinPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // 入店码只存在于二维码完整 URL 中，不经接口下发
+    const c = new URLSearchParams(window.location.search).get('c')?.trim().toLowerCase() ?? '';
+    setCode(c);
+    if (!/^[0-9a-z]{10}$/.test(c)) setError('未识别到入店码，请重新扫描骑手的完整二维码');
+
     fetch(`/api/visits/${id}`)
       .then(async r => {
         if (r.status === 404) { setNotFound(true); return; }
@@ -40,7 +46,11 @@ export default function CheckinPage() {
   async function handleCheckin() {
     setBusy(true); setError('');
     try {
-      const res = await fetch(`/api/visits/${id}/checkin`, { method: 'POST' });
+      const res = await fetch(`/api/visits/${id}/checkin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
       const j = await res.json() as { ok: boolean; error?: string };
       if (!j.ok) { setError(j.error ?? '操作失败，请重试'); return; }
       setDone(true);
@@ -84,7 +94,11 @@ export default function CheckinPage() {
             </div>
             {error && <p className="field-error" role="alert" style={{ marginBottom: '1rem' }}>※ {error}</p>}
             {visit.status === 'reserved' ? (
-              <button className="btn btn-primary btn-lg btn-full" onClick={handleCheckin} disabled={busy}>
+              <button
+                className="btn btn-primary btn-lg btn-full"
+                onClick={handleCheckin}
+                disabled={busy || !/^[0-9a-z]{10}$/.test(code)}
+              >
                 {busy ? '确认中…' : '确认入店'}
               </button>
             ) : (

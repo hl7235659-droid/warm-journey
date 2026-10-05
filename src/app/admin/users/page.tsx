@@ -18,6 +18,8 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState({ username: '', password: '', role: 'inspector' as AdminRole, display_name: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [resetPwd, setResetPwd] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,17 +49,23 @@ export default function AdminUsersPage() {
     } finally { setSaving(false); }
   }
 
-  async function resetPassword(u: AdminUser) {
-    const pwd = window.prompt(`为 ${u.username} 设置新密码（至少 6 位）：`);
-    if (!pwd) return;
-    if (pwd.length < 6) { alert('密码至少 6 位'); return; }
-    const r = await fetch(`/api/admin/users/${u.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd }),
-    });
-    const j = await r.json() as { ok: boolean; error?: string };
-    alert(j.ok ? '密码已重置' : (j.error ?? '操作失败'));
+  // 重置密码用 type=password 的弹窗（window.prompt 明文可见，且无法粘贴密码管理器的强密码）
+  async function submitReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetUser) return;
+    if (resetPwd.length < 6) { alert('密码至少 6 位'); return; }
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/admin/users/${resetUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: resetPwd }),
+      });
+      const j = await r.json() as { ok: boolean; error?: string };
+      if (j.ok) { setResetUser(null); setResetPwd(''); alert('密码已重置'); }
+      else alert(j.error ?? '操作失败');
+    } catch { alert('网络异常，请稍后重试'); }
+    finally { setSaving(false); }
   }
 
   async function changeRole(u: AdminUser, role: AdminRole) {
@@ -88,9 +96,16 @@ export default function AdminUsersPage() {
 
   return (
     <>
+      {me?.role !== 'super_admin' && (
+        <p className="field-error" style={{ fontFamily: 'var(--font-sans)' }}>
+          ※ 账号管理仅对超级管理员开放，如需变更请联系管理员。
+        </p>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.25rem' }}>账号管理</h1>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 新建账号</button>
+        {me?.role === 'super_admin' && (
+          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 新建账号</button>
+        )}
       </div>
 
       <div className="table-wrap">
@@ -131,7 +146,7 @@ export default function AdminUsersPage() {
                   {u.last_login_at ? new Date(u.last_login_at * 1000).toLocaleDateString('zh-CN') : '从未登录'}
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => resetPassword(u)}>重置密码</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setResetUser(u); setResetPwd(''); }}>重置密码</button>
                   {u.id !== me?.id && (
                     <button className="btn btn-ghost btn-sm" onClick={() => remove(u)} style={{ color: 'var(--danger)' }}>删除</button>
                   )}
@@ -146,8 +161,7 @@ export default function AdminUsersPage() {
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <h2 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>新建账号</h2>
-            <form onSubmit={submit} noValidate>
-              <div style={{ marginBottom: '1rem' }}>
+            <form onSubmit={submit} noValidate>              <div style={{ marginBottom: '1rem' }}>
                 <label htmlFor="u-name">用户名 *</label>
                 <input id="u-name" className="input" value={form.username}
                   onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
@@ -177,6 +191,26 @@ export default function AdminUsersPage() {
                 <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>取消</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? '创建中…' : '创建'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {resetUser && (
+        <div className="modal-backdrop" onClick={() => setResetUser(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h2 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>为 {resetUser.username} 设置新密码</h2>
+            <form onSubmit={submitReset} noValidate>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label htmlFor="r-pwd">新密码（至少 6 位）</label>
+                <input id="r-pwd" className="input" type="password" autoComplete="new-password"
+                  value={resetPwd} onChange={e => setResetPwd(e.target.value)} required autoFocus />
+              </div>
+              <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setResetUser(null)}>取消</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? '保存中…' : '保存'}
                 </button>
               </div>
             </form>

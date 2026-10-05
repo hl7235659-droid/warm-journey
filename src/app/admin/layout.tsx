@@ -5,17 +5,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { type Admin, AdminCtx } from './admin-context';
 
-const NAV = [
+// roles 与后端 withAdmin 的角色白名单保持一致：入口不给看不到的人（点了才吃 403 是坏体验）
+type NavItem = { href: string; label: string; icon: string; exact?: boolean; roles?: string[] };
+const NAV: NavItem[] = [
   { href: '/admin',             label: '看板',     icon: '📊', exact: true },
   { href: '/admin/points',      label: '服务点',   icon: '📍' },
   { href: '/admin/reports',     label: '上报',     icon: '🚩' },
   { href: '/admin/work-orders', label: '工单',     icon: '📋' },
   { href: '/admin/inspections', label: '巡检',     icon: '🔍' },
   { href: '/admin/visits',      label: '在店',     icon: '👥' },
-  { href: '/admin/knowledge',   label: '知识库',   icon: '📚' },
+  { href: '/admin/knowledge',   label: '知识库',   icon: '📚', roles: ['super_admin', 'admin'] },
   { href: '/admin/heatmap',     label: '热力图',   icon: '🗺️' },
-  { href: '/admin/cities',      label: '城市',     icon: '🏙️' },
-  { href: '/admin/users',       label: '账号',     icon: '👤' },
+  { href: '/admin/cities',      label: '城市',     icon: '🏙️', roles: ['super_admin', 'admin'] },
+  { href: '/admin/users',       label: '账号',     icon: '👤', roles: ['super_admin'] },
 ];
 
 const COLLAPSE_KEY = 'wj_admin_sidebar_collapsed';
@@ -135,7 +137,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             ].filter(Boolean).join(' ')}
             aria-label="管理端导航"
           >
-            {NAV.map(n => {
+            {NAV.filter(n => !n.roles || (admin !== null && n.roles.includes(admin.role))).map(n => {
               const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
               return (
                 <a

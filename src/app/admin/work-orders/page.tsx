@@ -2,6 +2,7 @@
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useCanWrite } from '../admin-context';
 import type { WorkOrder } from '@/lib/types';
 import { WORK_ORDER_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/types';
 
@@ -13,6 +14,7 @@ const PRIORITY_BADGE: Record<string, string> = {
 };
 
 export default function AdminWorkOrdersPage() {
+  const canWrite = useCanWrite();
   const [items, setItems] = useState<WorkOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -102,7 +104,7 @@ export default function AdminWorkOrdersPage() {
                   {new Date(w.created_at * 1000).toLocaleDateString('zh-CN')}
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => openEdit(w)}>更新</button>
+                  {canWrite && <button className="btn btn-ghost btn-sm" onClick={() => openEdit(w)}>更新</button>}
                 </td>
               </tr>
             ))}

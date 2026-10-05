@@ -1,8 +1,11 @@
 'use client';
-// localStorage 读写（providers / sessions）——纯函数，SSR 安全（读操作在 gUA 下返回默认值）
+// 本地读写（providers / sessions）——纯函数，SSR 安全（读操作在 SSR 下返回默认值）
+// 安全分层：提供商元数据（名称/地址/模型）落 localStorage；API Key 只进 sessionStorage，
+// 关掉标签页即消失，避免长期明文驻留在磁盘上被扩展/共用设备读取。
 import type { AiProvider, ProviderStore, ChatMessage, ChatSession } from '@/lib/ai/types';
 
 const PROVIDERS_KEY = 'wj_ai_providers';
+const PROVIDER_KEYS = 'wj_ai_provider_keys';   // sessionStorage
 const SESSIONS_KEY = 'wj_ai_sessions';
 
 export const MAX_SESSIONS = 20;
@@ -17,6 +20,23 @@ function safeSet(key: string, value: string) {
   if (typeof window === 'undefined') return;
   try { localStorage.setItem(key, value); } catch { /* 配额满等异常静默 */ }
 }
+function safeGetSession(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try { return sessionStorage.getItem(key); } catch { return null; }
+}
+function safeSetSession(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try { sessionStorage.setItem(key, value); } catch { /* 隐私模式等异常静默 */ }
+}
+
+function readKeyMap(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(safeGetSession(PROVIDER_KEYS) ?? '{}') as Record<string, string>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 export function genLocalId(): string {
   const bytes = new Uint8Array(8);
@@ -29,11 +49,15 @@ export function genLocalId(): string {
 export function loadProviders(): ProviderStore {
   const raw = safeGet(PROVIDERS_KEY);
   if (!raw) return { providers: [], activeId: null };
+  const keys = readKeyMap();
   try {
     const parsed = JSON.parse(raw) as ProviderStore;
     if (!Array.isArray(parsed.providers)) return { providers: [], activeId: null };
     return {
-      providers: parsed.providers.filter((p) => p && typeof p.id === 'string'),
+      // Key 从不写入 localStorage：仅本次会话有效，重开标签页需重新输入
+      providers: parsed.providers
+        .filter((p) => p && typeof p.id === 'string')
+        .map((p) => ({ ...p, apiKey: keys[p.id] ?? '' })),
       activeId: typeof parsed.activeId === 'string' ? parsed.activeId : null,
     };
   } catch {
@@ -42,7 +66,21 @@ export function loadProviders(): ProviderStore {
 }
 
 export function saveProviders(store: ProviderStore) {
-  safeSet(PROVIDERS_KEY, JSON.stringify(store));
+  const keys = readKeyMap();
+  for (const p of store.providers) {
+    if (p.apiKey) keys[p.id] = p.apiKey;
+    else delete keys[p.id];
+  }
+  const knownIds = new Set(store.providers.map((p) => p.id));
+  for (const id of Object.keys(keys)) if (!knownIds.has(id)) delete keys[id];
+  safeSetSession(PROVIDER_KEYS, JSON.stringify(keys));
+
+  // 落到 localStorage 的部分必须彻底剔除 apiKey 字段
+  const meta = store.providers.map((p) => {
+    const { apiKey: _omit, ...rest } = p;
+    return rest;
+  });
+  safeSet(PROVIDERS_KEY, JSON.stringify({ activeId: store.activeId, providers: meta }));
 }
 
 export function activeProvider(store: ProviderStore): AiProvider | null {

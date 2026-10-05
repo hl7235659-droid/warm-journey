@@ -46,7 +46,11 @@ export default function AdminPointEditPage() {
   function setAdmission<K extends keyof NonNullable<typeof form['admission']>>(
     k: K, v: NonNullable<typeof form['admission']>[K],
   ) {
-    setForm(f => ({ ...f, admission: { ...f.admission!, [k]: v } }));
+    // admission 可能来自接口返回的 null / 缺字段：先补默认值再合并，避免非空断言白屏
+    setForm(f => ({
+      ...f,
+      admission: { id_required: false, notes: '', ...(f.admission ?? {}), [k]: v },
+    }));
   }
 
   function toggleService(s: string) {

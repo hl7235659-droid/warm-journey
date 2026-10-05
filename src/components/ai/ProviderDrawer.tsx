@@ -111,7 +111,7 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
     if (!vName) { alert('请填写名称'); return; }
     if (vName.length > 30) { alert('名称不能超过 30 字'); return; }
     if (!vUrl) { alert('请填写接口地址'); return; }
-    if (!/^https?:\/\//.test(vUrl)) { alert('接口地址必须以 http:// 或 https:// 开头'); return; }
+    if (!/^https:\/\//.test(vUrl)) { alert('接口地址必须以 https:// 开头'); return; }
     if (!vModel) { alert('请填写模型名称'); return; }
     if (Number.isNaN(vTemp) || vTemp < 0 || vTemp > 2) { alert('温度需在 0 - 2 之间'); return; }
 
@@ -162,7 +162,7 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
   function testForm() {
     const vUrl = baseUrl.trim();
     if (!vUrl) { alert('请先填写接口地址'); return; }
-    if (!/^https?:\/\//.test(vUrl)) { alert('接口地址必须以 http:// 或 https:// 开头'); return; }
+    if (!/^https:\/\//.test(vUrl)) { alert('接口地址必须以 https:// 开头'); return; }
     if (!model.trim()) { alert('请先填写模型名称'); return; }
     void runTest({ baseUrl: vUrl, apiKey: apiKey.trim(), model: model.trim() });
   }
@@ -182,7 +182,10 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
 
       <div className="aidock-drawer-body">
         <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          提供商配置与 API Key 只保存在你的设备（localStorage），不会上传服务器。填写任一 OpenAI 兼容接口即可，如 https://api.deepseek.com/v1
+          提供商地址与模型名保存在你的设备，API Key 只保存在本次会话（关闭标签页即清除，需重新填写）。接口须在受信任的 OpenAI 兼容域名列表内，如 https://api.deepseek.com/v1
+        </p>
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: 'var(--gold-600, #b8860b)', lineHeight: 1.5 }}>
+          ⚠ 仅支持 https:// 且域名在白名单内的接口（自建/中转域名需由站点管理员通过 AI_ALLOWED_HOSTS 追加）。请勿在公用设备上配置 Key。
         </p>
 
         {store.providers.length === 0 && editing === 'none' && (

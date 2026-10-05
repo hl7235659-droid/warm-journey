@@ -33,14 +33,17 @@ export default function AdminReportsPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function createWorkOrder(reportId: string) {
-    const res = await fetch('/api/admin/work-orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '处理上报', source_report_id: reportId, priority: 'normal' }),
-    });
-    const j = await res.json() as { ok: boolean };
-    if (j.ok) { alert('工单已创建'); void load(); }
-    else alert('创建失败');
+    // API 入参是 report_id（此前误传 source_report_id，zod 静默丢弃导致工单永远关联不上上报）
+    try {
+      const res = await fetch('/api/admin/work-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: '处理上报', report_id: reportId, priority: 'normal' }),
+      });
+      const j = await res.json() as { ok: boolean; error?: string };
+      if (j.ok) { alert('工单已创建'); void load(); }
+      else alert(j.error ?? '创建失败');
+    } catch { alert('网络异常，请稍后重试'); }
   }
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
@@ -78,7 +81,7 @@ export default function AdminReportsPage() {
               <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <td style={{ padding: '0.625rem 0.75rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
                   <a href={`/admin/points/${r.point_id}`} style={{ textDecoration: 'none', color: 'inherit', fontSize: '0.82rem' }}>
-                    {r.point_id.slice(0, 8)}…
+                    {r.point_name ?? r.point_id.slice(0, 8) + '…'}
                   </a>
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>

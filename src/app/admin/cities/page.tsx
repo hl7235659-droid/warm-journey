@@ -2,9 +2,11 @@
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useCanWrite } from '../admin-context';
 import type { City } from '@/lib/db';
 
 export default function AdminCitiesPage() {
+  const canWrite = useCanWrite();
   const [items, setItems] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -44,21 +46,23 @@ export default function AdminCitiesPage() {
   }
 
   async function toggleEnabled(c: City) {
-    const r = await fetch(`/api/admin/cities/${c.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: c.enabled ? 0 : 1 }),
-    });
-    const j = await r.json() as { ok: boolean; error?: string };
-    if (j.ok) void load();
-    else alert(j.error ?? '操作失败');
+    try {
+      const r = await fetch(`/api/admin/cities/${c.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: c.enabled ? 0 : 1 }),
+      });
+      const j = await r.json() as { ok: boolean; error?: string };
+      if (j.ok) void load();
+      else alert(j.error ?? '操作失败');
+    } catch { alert('网络异常，请稍后重试'); }
   }
 
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.25rem' }}>城市管理</h1>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 开通城市</button>
+        {canWrite && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 开通城市</button>}
       </div>
 
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
@@ -93,9 +97,11 @@ export default function AdminCitiesPage() {
                   </span>
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(c)}>
-                    {c.enabled ? '停用' : '开通'}
-                  </button>
+                  {canWrite && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(c)}>
+                      {c.enabled ? '停用' : '开通'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

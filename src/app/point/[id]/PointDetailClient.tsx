@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { Corners } from '@/components/ornaments';
 import type { PointSignals, Occupancy } from '@/lib/db';
 import { navToPoint } from '@/lib/nav';
+import { getRiderToken } from '@/lib/rider';
 import VisitCard from './VisitCard';
 
 interface Props { point: ServicePoint; signals: PointSignals; occupancy: Occupancy }
@@ -16,6 +17,8 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
   const [confirmCount, setConfirmCount] = useState(signals.confirm_count);
   const [confirmed, setConfirmed] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClass = { open: 'seal-jade', closed: 'seal-ink', temp_closed: 'seal-gold' }[point.status];
   const updatedDate = new Date(point.updated_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
@@ -34,22 +37,36 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
     if (confirmed || confirming) return;
     setConfirming(true);
     try {
-      const res = await fetch(`/api/points/${point.id}/confirm`, { method: 'POST' });
-      const json = await res.json() as { ok: boolean; data?: { confirm_count: number } };
+      const res = await fetch(`/api/points/${point.id}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rider_token: getRiderToken() }),
+      });
+      const json = await res.json() as { ok: boolean; error?: string; data?: { confirm_count: number } };
       if (json.ok && json.data) {
         setConfirmCount(json.data.confirm_count);
         setConfirmed(true);
         try { localStorage.setItem(CONFIRM_KEY, '1'); } catch { /* ignore */ }
+      } else if (json.error) {
+        setConfirmError(json.error);
       }
+    } catch {
+      setConfirmError('网络异常，请稍后重试');
     } finally {
       setConfirming(false);
     }
   }
 
+  // 卸载时清理"已复制"提示的定时器
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
   function copyAddress() {
     navigator.clipboard.writeText(point.address).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
     });
   }
 
@@ -188,6 +205,11 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
                 {confirmed ? '已确认 ✓' : confirming ? '提交中…' : '信息无误'}
               </button>
             </div>
+            {confirmError && (
+              <p style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: 'var(--cinnabar)', fontFamily: 'var(--font-sans)' }}>
+                {confirmError}
+              </p>
+            )}
           </div>
         </section>
 

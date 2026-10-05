@@ -2,10 +2,12 @@
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useCanWrite } from '../admin-context';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS } from '@/lib/types';
 
 export default function AdminPointsPage() {
+  const canWrite = useCanWrite();
   const [points, setPoints] = useState<ServicePoint[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -36,7 +38,7 @@ export default function AdminPointsPage() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.25rem' }}>服务点管理</h1>
-        <a href="/admin/points/new" className="btn btn-primary btn-sm">+ 新增</a>
+        {canWrite && <a href="/admin/points/new" className="btn btn-primary btn-sm">+ 新增</a>}
       </div>
 
       {/* Filters */}
@@ -96,7 +98,7 @@ export default function AdminPointsPage() {
                   {p.verified_at ? '✅' : '—'}
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
-                  <a href={`/admin/points/${p.id}`} className="btn btn-ghost btn-sm" style={{ marginRight: '0.375rem' }}>编辑</a>
+                  {canWrite && <a href={`/admin/points/${p.id}`} className="btn btn-ghost btn-sm" style={{ marginRight: '0.375rem' }}>编辑</a>}
                   <a href={`/admin/points/${p.id}/history`} className="btn btn-ghost btn-sm">历史</a>
                 </td>
               </tr>

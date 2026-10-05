@@ -4,7 +4,7 @@
 // 只做「带路 + 预填」（跳转到既有表单页），绝不自动提交。
 import { ActionSchema } from '@/lib/ai/actions';
 import { navToPoint } from '@/lib/nav';
-import type { AiAction, AiContext, ChatSession } from '@/lib/ai/types';
+import type { AiAction } from '@/lib/ai/types';
 
 export interface ExecResult {
   ok: boolean;
@@ -73,9 +73,10 @@ export async function executeAction(
     case 'feedback': {
       try {
         const res = await fetch(`/api/visits/${a.params.visitId}`);
-        const json = (await res.json()) as { ok: boolean; data?: { point_id: string } };
-        if (!json.ok || !json.data) return { ok: false, message: '到访记录不存在' };
-        router.push(`/checkout/${json.data.point_id}`);
+        const json = (await res.json()) as { ok: boolean; data?: { visit?: { point_id?: string } } };
+        const pointId = json.data?.visit?.point_id;
+        if (!json.ok || !pointId) return { ok: false, message: '到访记录不存在' };
+        router.push(`/checkout/${pointId}`);
         return { ok: true, message: '已打开离店反馈页' };
       } catch {
         return { ok: false, message: '获取到访记录失败' };
@@ -107,23 +108,4 @@ export async function fetchKnowledgeFor(action: AiAction): Promise<string | null
   } catch {
     return '知识库暂时取不到，请稍后再试。';
   }
-}
-
-// 发送请求体组装（AiDock / ChatPanel 共用）
-export async function buildChatRequestBody(
-  session: ChatSession,
-  withUserMessage: string,
-  provider: { baseUrl: string; apiKey: string; model: string; temperature: number } | null,
-) {
-  const { getContext } = await import('./ai-context');
-  const context: AiContext | null = await getContext();
-  const history = session.messages
-    .slice(-11) // 之前 11 条 + 本条 = 12 条
-    .map((m) => ({ role: m.role, content: m.content }));
-  return {
-    provider: provider && provider.apiKey ? provider : undefined,
-    messages: [...history, { role: 'user' as const, content: withUserMessage }],
-    pointId: session.pointId,
-    context: context ?? undefined,
-  };
 }

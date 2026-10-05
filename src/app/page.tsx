@@ -1,7 +1,7 @@
 'use client';
 export const runtime = 'edge';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS, SERVICE_TAGS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
@@ -47,20 +47,20 @@ function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
   point: ServicePoint; userLat: number | null; userLng: number | null; idx: number;
   fav: boolean; onToggleFav: (id: string) => void;
 }) {
-  const dist = (userLat && userLng) ? haversine(userLat, userLng, point.lat, point.lng) : null;
+  const hasLoc = userLat !== null && userLng !== null;
+  const dist = hasLoc ? haversine(userLat, userLng, point.lat, point.lng) : null;
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
   const isPhoto = POINT_COVERS[point.id] !== undefined;
   const delay = Math.min(idx, 6) * 70;
 
   return (
-    <a href={`/point/${point.id}`} className="card point-card reveal"
-       style={{ animationDelay: `${delay}ms`, position: 'relative' }}
-       aria-label={`${point.name}，${STATUS_LABELS[point.status]}`}>
+    <div className="reveal" style={{ animationDelay: `${delay}ms`, position: 'relative' }}>
+      {/* 收藏按钮与链接是兄弟元素，避免 <a> 内嵌套交互元素 */}
       <button
         type="button"
         aria-label={fav ? '取消收藏' : '收藏该站点'}
         aria-pressed={fav}
-        onClick={e => { e.preventDefault(); e.stopPropagation(); onToggleFav(point.id); }}
+        onClick={() => onToggleFav(point.id)}
         style={{
           position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 2,
           width: '34px', height: '34px', borderRadius: '50%', border: '1px solid var(--border)',
@@ -68,30 +68,34 @@ function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
           fontSize: '1rem', lineHeight: 1, color: fav ? 'var(--red-800)' : 'var(--text-faint)',
         }}
       >{fav ? '♥' : '♡'}</button>
-      <div className="point-cover">
-        <img src={cover} alt={isPhoto ? `${point.name} 实景` : `${point.name} 插画示意`} loading="lazy" />
-        <span className={`seal ${STATUS_SEALS[point.status]} cover-badge anim-stamp`}
-              style={{ animationDelay: `${delay + 250}ms` }}>
-          {STATUS_LABELS[point.status]}
-        </span>
-        {dist !== null && <span className="cover-dist">{formatDist(dist)}</span>}
-      </div>
-      <div className="point-body">
-        <h2 className="point-name">{point.name}</h2>
-        <p className="point-meta"><span className="mi-seal" aria-hidden="true"><i>址</i></span>{point.address}</p>
-        <p className="point-meta"><span className="mi-seal" aria-hidden="true"><i>时</i></span>{point.open_hours}</p>
-        {point.services.length > 0 && (
-          <div className="point-tags">
-            {point.services.slice(0, 5).map(s => (
-              <span key={s} className="tag">{s}</span>
-            ))}
-            {point.services.length > 5 && (
-              <span className="tag" style={{ opacity: 0.75 }}>+{point.services.length - 5}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </a>
+      <a href={`/point/${point.id}`} className="card point-card" style={{ position: 'relative' }}
+         aria-label={`${point.name}，${STATUS_LABELS[point.status]}`}>
+        <div className="point-cover">
+          <img src={cover} alt={isPhoto ? `${point.name} 实景` : `${point.name} 插画示意`} loading="lazy"
+               width={800} height={450} />
+          <span className={`seal ${STATUS_SEALS[point.status]} cover-badge anim-stamp`}
+                style={{ animationDelay: `${delay + 250}ms` }}>
+            {STATUS_LABELS[point.status]}
+          </span>
+          {dist !== null && <span className="cover-dist">{formatDist(dist)}</span>}
+        </div>
+        <div className="point-body">
+          <h2 className="point-name">{point.name}</h2>
+          <p className="point-meta"><span className="mi-seal" aria-hidden="true"><i>址</i></span>{point.address}</p>
+          <p className="point-meta"><span className="mi-seal" aria-hidden="true"><i>时</i></span>{point.open_hours}</p>
+          {point.services.length > 0 && (
+            <div className="point-tags">
+              {point.services.slice(0, 5).map(s => (
+                <span key={s} className="tag">{s}</span>
+              ))}
+              {point.services.length > 5 && (
+                <span className="tag" style={{ opacity: 0.75 }}>+{point.services.length - 5}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </a>
+    </div>
   );
 }
 
@@ -100,7 +104,10 @@ const FAVS_KEY = 'wj_favs';
 export default function HomePage() {
   const [points, setPoints] = useState<ServicePoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [q, setQ] = useState('');
+  // 搜索防抖：停止输入 300ms 后才真正请求
+  const [debouncedQ, setDebouncedQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
@@ -111,6 +118,13 @@ export default function HomePage() {
   const [serviceFilter, setServiceFilter] = useState('');
   const [favs, setFavs] = useState<string[]>([]);
   const [favOnly, setFavOnly] = useState(false);
+  // 请求序号：慢响应不会覆盖新结果
+  const seqRef = useRef(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   // 已开通城市
   useEffect(() => {
@@ -148,19 +162,22 @@ export default function HomePage() {
   }
 
   const fetchPoints = useCallback(async () => {
+    const seq = ++seqRef.current;
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams();
-      if (q) params.set('q', q);
+      if (debouncedQ) params.set('q', debouncedQ);
       if (statusFilter) params.set('status', statusFilter);
       if (cityFilter) params.set('city', cityFilter);
       if (serviceFilter) params.set('service', serviceFilter);
       params.set('page_size', '50');
       const res = await fetch(`/api/points?${params}`);
       const json = await res.json() as { ok: boolean; data?: { items: ServicePoint[]; total: number } };
+      if (seq !== seqRef.current) return; // 已有更新的请求，丢弃本次结果
       if (json.ok && json.data) {
         let items = json.data.items;
-        if (userLat && userLng) {
+        if (userLat !== null && userLng !== null) {
           items = [...items].sort((a, b) =>
             haversine(userLat, userLng, a.lat, a.lng) - haversine(userLat, userLng, b.lat, b.lng)
           );
@@ -168,10 +185,12 @@ export default function HomePage() {
         setPoints(items);
         setTotal(json.data.total);
       }
+    } catch {
+      if (seq === seqRef.current) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
-  }, [q, statusFilter, cityFilter, serviceFilter, userLat, userLng]);
+  }, [debouncedQ, statusFilter, cityFilter, serviceFilter, userLat, userLng]);
 
   useEffect(() => { void fetchPoints(); }, [fetchPoints]);
 
@@ -216,7 +235,7 @@ export default function HomePage() {
         <Branch />
         <div className="band-top anim-rise">
           <span className="brand-mark" aria-hidden="true">
-            <img src="/images/logo-mark.png" alt="" />
+            <img src="/images/logo-mark.png" alt="" width={44} height={44} fetchPriority="high" />
           </span>
           <span className="band-brandcol">
             <span className="band-brand">暖途同行</span>
@@ -229,7 +248,7 @@ export default function HomePage() {
           <div className="anim-rise" style={{ animationDelay: '80ms' }}>
             <span className="band-eyebrow">新就业群体服务 · 公益项目</span>
             <h1 className="band-title">
-              <img src="/images/title-calligraphy.png" alt="暖途同行" />
+              <img src="/images/title-calligraphy.png" alt="暖途同行" width={320} height={96} fetchPriority="high" />
             </h1>
             <Swoosh />
           </div>
@@ -351,7 +370,7 @@ export default function HomePage() {
         <div className="section-head anim-rise">
           <h2>服务站点</h2>
           <small>
-            {loading ? '加载中…' : `共 ${total} 个${userLat ? ' · 按距离排序' : ''}`}
+            {loading ? '加载中…' : `共 ${total} 个${(userLat !== null && userLng !== null) ? ' · 按距离排序' : ''}`}
           </small>
         </div>
 
@@ -360,6 +379,15 @@ export default function HomePage() {
             {[1, 2, 3].map(i => (
               <div key={i} className="skeleton" style={{ height: '280px', borderRadius: 'var(--r-lg)' }} />
             ))}
+          </div>
+        ) : loadError ? (
+          <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.88rem', color: 'var(--danger)' }}>
+              加载失败，请检查网络后重试
+            </p>
+            <button className="btn btn-secondary btn-sm" style={{ marginTop: '0.75rem' }} onClick={() => void fetchPoints()}>
+              重新加载
+            </button>
           </div>
         ) : visiblePoints.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>

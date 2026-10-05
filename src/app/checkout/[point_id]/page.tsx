@@ -24,7 +24,11 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const token = getRiderToken();
-    fetch(`/api/visits/active?point_id=${pointId}&rider_token=${token}`)
+    fetch('/api/visits/active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ point_id: pointId, rider_token: token }),
+    })
       .then(r => r.json() as Promise<{ ok: boolean; data?: { visit: Visit | null } }>)
       .then(j => {
         const v = j.ok && j.data ? j.data.visit : null;

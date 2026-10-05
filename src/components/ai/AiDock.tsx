@@ -35,7 +35,7 @@ export default function AiDock() {
   const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
   const [greeting, setGreeting] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX?: number; lastY?: number } | null>(null);
 
   // 桌宠式问候：页面打开 1.2s 后弹出，14s 自动收起；打开面板即隐藏
   useEffect(() => {
@@ -230,6 +230,8 @@ export default function AiDock() {
   const provider = activeProvider(providerStore);
 
   // ---------- 面板拖拽（仅桌面端，顶栏为手柄） ----------
+  // 拖拽过程中直接写 transform（不经过 setState），pointerup 才提交位置，
+  // 避免每帧触发含 Markdown 列表的整体重渲染。
   const isDesktop = () => typeof window !== 'undefined' && window.innerWidth > 640;
   const onHeadPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button')) return; // 按钮不触发拖拽
@@ -246,9 +248,25 @@ export default function AiDock() {
     const rect = panel.getBoundingClientRect();
     const x = Math.min(Math.max(d.baseX + e.clientX - d.startX, 8), window.innerWidth - rect.width - 8);
     const y = Math.min(Math.max(d.baseY + e.clientY - d.startY, 8), window.innerHeight - rect.height - 8);
-    setPanelPos({ x, y });
+    dragRef.current = { ...d, lastX: x, lastY: y };
+    panel.style.transform = `translate(${x - d.baseX}px, ${y - d.baseY}px)`;
   };
-  const onHeadPointerUp = () => { dragRef.current = null; };
+  const onHeadPointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    const panel = panelRef.current;
+    if (d && panel && d.lastX !== undefined && d.lastY !== undefined) {
+      // 先把最终位置写进内联样式再去掉 transform，避免回弹闪烁；
+      // 随后提交 state，React 重渲染的内联样式与手写值一致
+      panel.style.left = `${d.lastX}px`;
+      panel.style.top = `${d.lastY}px`;
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.animation = 'none';
+      panel.style.transform = '';
+      setPanelPos({ x: d.lastX, y: d.lastY });
+    }
+  };
 
   const panelStyle: React.CSSProperties | undefined =
     panelPos && isDesktop()

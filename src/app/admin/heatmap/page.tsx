@@ -16,12 +16,35 @@ declare global { interface Window { TMap?: any } }
 
 export default function AdminHeatmapPage() {
   const mapRef = useRef<HTMLDivElement>(null);
+  // 组件卸载时销毁地图实例，防止反复进出页面累积内存
+  const mapInstanceRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [points, setPoints] = useState<HeatPoint[]>([]);
 
   useEffect(() => {
     if (KEY_PLACEHOLDER) { setStatus('error'); return; }
     let cancelled = false;
+
+    // script 幂等加载：已有加载中的标签则复用，避免重复注入
+    function loadTMap(): Promise<boolean> {
+      if (window.TMap) return Promise.resolve(true);
+      const existing = document.querySelector<HTMLScriptElement>('script[data-tmap-gl]');
+      if (existing) {
+        return new Promise<boolean>((resolve) => {
+          existing.addEventListener('load', () => resolve(true), { once: true });
+          existing.addEventListener('error', () => resolve(false), { once: true });
+        });
+      }
+      return new Promise<boolean>((resolve) => {
+        const s = document.createElement('script');
+        s.src = `https://map.qq.com/api/gljs?v=1.exp&libraries=visualization&key=${TMAP_KEY}`;
+        s.async = true;
+        s.dataset.tmapGl = '1';
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
 
     async function boot() {
       const [heatJson, cityJson] = await Promise.all([
@@ -34,16 +57,8 @@ export default function AdminHeatmapPage() {
       if (cancelled) return;
       setPoints(data);
 
-      if (!window.TMap) {
-        const ok = await new Promise<boolean>(resolve => {
-          const s = document.createElement('script');
-          s.src = `https://map.qq.com/api/gljs?v=1.exp&libraries=visualization&key=${TMAP_KEY}`;
-          s.onload = () => resolve(true);
-          s.onerror = () => resolve(false);
-          document.head.appendChild(s);
-        });
-        if (!ok || cancelled) { if (!cancelled) setStatus('error'); return; }
-      }
+      const ok = await loadTMap();
+      if (!ok || cancelled) { if (!cancelled) setStatus('error'); return; }
       if (!window.TMap || !mapRef.current) { setStatus('error'); return; }
 
       const firstCity = cityJson.ok ? cityJson.data?.[0] : undefined;
@@ -52,6 +67,7 @@ export default function AdminHeatmapPage() {
         center: new window.TMap.LatLng(center.center_lat, center.center_lng),
         zoom: 13,
       });
+      mapInstanceRef.current = map;
 
       // 热力层：权重 = 近 90 天上报数（无上报也给 1，保证点位可见）
       const heatData = data.map(p => ({ lat: p.lat, lng: p.lng, count: Math.max(p.report_count, 1) }));
@@ -86,7 +102,13 @@ export default function AdminHeatmapPage() {
     }
 
     void boot();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (mapInstanceRef.current) {
+        try { mapInstanceRef.current.destroy(); } catch { /* 部分版本无 destroy */ }
+        mapInstanceRef.current = null;
+      }
+    };
   }, []);
 
   return (

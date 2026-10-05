@@ -12,7 +12,6 @@ interface ReportStatusData {
   point_id: string;
   point_name?: string;
   category: ReportCategory;
-  content: string;
   status: ReportStatus;
   created_at: number;
 }
@@ -46,7 +45,7 @@ export default function ReportStatusPage() {
 
   async function query(c: string) {
     const trimmed = c.trim().toLowerCase();
-    if (trimmed.length < 6) { setError('查询码至少 6 位'); return; }
+    if (trimmed.length < 10) { setError('查询码为 10 位字符'); return; }
     setLoading(true);
     setError('');
     setResult(null);
@@ -82,7 +81,7 @@ export default function ReportStatusPage() {
             className="input"
             type="text"
             inputMode="text"
-            placeholder="输入查询码，如 a1b2c3d4…"
+            placeholder="输入 10 位查询码"
             value={code}
             onChange={e => setCode(e.target.value)}
             aria-label="查询码"
@@ -111,10 +110,6 @@ export default function ReportStatusPage() {
               <p style={{ margin: 0, fontSize: '0.88rem', fontFamily: 'var(--font-sans)' }}>
                 <span style={{ color: 'var(--text-muted)' }}>问题类型：</span>
                 {REPORT_CATEGORY_LABELS[result.category]}
-              </p>
-              <p style={{ margin: 0, fontSize: '0.88rem', fontFamily: 'var(--font-sans)', lineHeight: 1.7 }}>
-                <span style={{ color: 'var(--text-muted)' }}>上报内容：</span>
-                {result.content}
               </p>
               <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-faint)', fontFamily: 'var(--font-sans)' }}>
                 上报时间：{fmtDate(result.created_at)}

@@ -26,19 +26,23 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [origin, setOrigin] = useState('');
 
-  // 在店时长每秒刷新（仅 in_store 时值得跑）
+  // 在店时长每 30 秒刷新（仅 in_store 时值得跑；依赖具体字段，避免每次 refresh 重建 interval）
   useEffect(() => {
     if (visit?.status !== 'in_store' || !visit.checked_in_at) return;
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30000);
     return () => clearInterval(t);
-  }, [visit]);
+  }, [visit?.status, visit?.checked_in_at]);
 
   useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const refresh = useCallback(async () => {
     const token = getRiderToken();
     try {
-      const res = await fetch(`/api/visits/active?point_id=${pointId}&rider_token=${token}`);
+      const res = await fetch('/api/visits/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ point_id: pointId, rider_token: token }),
+      });
       const json = await res.json() as { ok: boolean; data?: { visit: Visit | null } };
       if (json.ok && json.data) setVisit(json.data.visit);
     } catch { /* 离线时保持现状 */ }
@@ -54,11 +58,12 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rider_token: getRiderToken() }),
       });
-      const json = await res.json() as { ok: boolean; error?: string; data?: { visit: Visit } };
+      const json = await res.json() as { ok: boolean; error?: string; data?: { visit: Visit; created: boolean } };
       if (!json.ok || !json.data) { setError(json.error ?? '预约失败，请重试'); return; }
       setVisit(json.data.visit);
-      if (json.data.visit.status === 'reserved') {
-        setOccupancy(o => ({ ...o, reserved: o.reserved + (visit ? 0 : 1) }));
+      // 用响应里的 created 标记做乐观更新，避免读到闭包里的旧 visit
+      if (json.data.created && json.data.visit.status === 'reserved') {
+        setOccupancy(o => ({ ...o, reserved: o.reserved + 1 }));
       }
     } catch { setError('网络异常，请稍后重试'); }
     finally { setBusy(false); }
@@ -135,7 +140,14 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 0.75rem', fontFamily: 'var(--font-sans)' }}>
             已预约（名额保留 2 小时）。到店后请工作人员扫此码确认入店：
           </p>
-          {origin && <QrImage value={`${origin}/checkin/${visit.id}`} size={180} label="入店二维码" />}
+          {origin && visit.checkin_code && (
+            <QrImage value={`${origin}/checkin/${visit.id}?c=${visit.checkin_code}`} size={180} label="入店二维码" />
+          )}
+          {origin && !visit.checkin_code && (
+            <p style={{ fontSize: '0.8rem', color: 'var(--cinnabar)', fontFamily: 'var(--font-sans)' }}>
+              入店码缺失，请点击「刷新状态」或重新预约
+            </p>
+          )}
           <p style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-faint)', margin: '0.5rem 0 0.875rem', letterSpacing: '0.1em' }}>
             {visit.id}
           </p>

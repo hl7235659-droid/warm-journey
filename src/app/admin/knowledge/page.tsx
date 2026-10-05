@@ -2,6 +2,7 @@
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useCanWrite } from '../admin-context';
 import type { AiKnowledge } from '@/lib/db';
 
 const CATEGORIES = { rights: '权益政策', channel: '求助渠道', faq: '常见问题', notice: '平台公告' } as const;
@@ -38,6 +39,7 @@ function fmtDate(ts: number) {
 }
 
 export default function AdminKnowledgePage() {
+  const canWrite = useCanWrite();
   const [items, setItems] = useState<AiKnowledge[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -138,7 +140,7 @@ export default function AdminKnowledgePage() {
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.25rem' }}>AI 知识库</h1>
-        <button className="btn btn-primary btn-sm" onClick={openCreate}>+ 新增条目</button>
+        {canWrite && <button className="btn btn-primary btn-sm" onClick={openCreate}>+ 新增条目</button>}
       </div>
 
       <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
@@ -221,9 +223,13 @@ export default function AdminKnowledgePage() {
                 </td>
                 <td style={{ padding: '0.625rem 0.75rem', whiteSpace: 'nowrap' }}>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => openEdit(it)}>编辑</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(it)}>{it.enabled ? '停用' : '启用'}</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => remove(it)}>删除</button>
+          {canWrite && (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => openEdit(it)}>编辑</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => toggleEnabled(it)}>{it.enabled ? '停用' : '启用'}</button>
+              <button className="btn btn-danger btn-sm" onClick={() => remove(it)}>删除</button>
+            </>
+          )}
                   </div>
                 </td>
               </tr>
