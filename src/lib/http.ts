@@ -13,7 +13,6 @@ export interface CloudflareEnvLike {
   AI_API_KEY?: string;
   AI_MODEL?: string;
   AI_ALLOWED_HOSTS?: string;
-  WEATHER_API_KEY?: string;
 }
 
 type RouteCtx<P> = { params: Promise<P> };

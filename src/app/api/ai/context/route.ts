@@ -24,7 +24,7 @@ function nowShanghai(): string {
 export async function GET(req: Request) {
   const { env } = getRequestContext();
 
-  // 匿名可触发服务端 WEATHER_API_KEY 出站与 D1 写操作：必须限流
+  // 匿名可触发服务端出站请求与 D1 写操作：必须限流
   if (!(await checkRateLimit(env.DB, `ctx:${getClientIp(req)}`, { limit: 20, windowSec: 60 }))) {
     return Response.json({ ok: false, error: '请求过于频繁，请稍后再试' }, { status: 429 });
   }
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   const hasLocation = lat !== undefined && lng !== undefined;
 
   const [weather, nearby] = await Promise.allSettled([
-    fetchWeather(env as { WEATHER_API_KEY?: string }, lat, lng),
+    fetchWeather(lat, lng),
     hasLocation ? getNearbyPoints(env.DB, lat as number, lng as number, 3) : Promise.resolve([]),
   ]);
 

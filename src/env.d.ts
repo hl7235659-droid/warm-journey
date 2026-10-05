@@ -13,8 +13,6 @@ declare global {
     AI_MODEL?: string;
     // BYOK 出站主机名白名单追加（逗号分隔，可选）：默认只允许主流 OpenAI 兼容域名
     AI_ALLOWED_HOSTS?: string;
-    // 和风天气（可选；无 key 时走 wttr.in 免费端点）
-    WEATHER_API_KEY?: string;
   }
 }
 

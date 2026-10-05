@@ -176,9 +176,10 @@ npx wrangler r2 bucket create warm-journey-images
 | 变量 | 用途 | 必需 |
 |---|---|---|
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 演示兜底提供商（用户未在悬浮窗配置时的服务器端兜底，如 `https://api.deepseek.com/v1` / key / `deepseek-chat`） | 推荐 |
-| `WEATHER_API_KEY` | 和风天气 Key（无 Key 时自动走 wttr.in 免费端点，均失败则天气返回 null，不影响其他功能） | 可选 |
+| `AI_ALLOWED_HOSTS` | BYOK 出站主机名白名单追加（逗号分隔）；默认只允许 `src/lib/ai/fetch.ts` 内置的主流 OpenAI 兼容域名 | 可选 |
 
-用户侧使用：点悬浮窗顶栏「未配置 AI」→ 添加任一 OpenAI 兼容提供商（地址以 `/v1` 结尾）+ 自己的 API Key，
+天气不需要任何密钥：`/api/ai/context` 走 wttr.in 免费端点，取不到只少一段上下文文字。
+用户在悬浮窗里添加任一 OpenAI 兼容提供商（地址以 `/v1` 结尾）+ 自己的 API Key，
 Key 仅存浏览器 localStorage，永不提交服务器存储。无任何 Key 时小暖自动进入本地回答模式
 （站点功能手册 / 附近驿站 / 站点实时数据 / 周报统计摘要），功能不中断。
 
