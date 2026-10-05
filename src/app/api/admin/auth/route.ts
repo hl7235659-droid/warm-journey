@@ -1,7 +1,7 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { getAdminByUsername, updateLastLogin, checkRateLimit } from '@/lib/db';
 import { signToken } from '@/lib/auth';
-import { readJson, isResponse, getClientIp } from '@/lib/http';
+import { readJson, isResponse, getClientIp, jsonErr } from '@/lib/http';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   const ip = getClientIp(req);
   try {
     if (!(await checkRateLimit(env.DB, `login:${ip}`, { limit: 10, windowSec: 300 }))) {
-      return Response.json({ ok: false, error: '尝试过于频繁，请稍后再试' }, { status: 429 });
+      return jsonErr('尝试过于频繁，请稍后再试', 429);
     }
   } catch (e) {
     // D1 抖动时放行：限流器故障不应把全体管理员锁在门外
@@ -35,11 +35,11 @@ export async function POST(req: Request) {
   if (!user) {
     // constant-time comparison even on miss
     await bcrypt.compare(password, '$2b$10$invalid.hash.to.prevent.timing.attacks.00000000000000');
-    return Response.json({ ok: false, error: '用户名或密码错误' }, { status: 401 });
+    return jsonErr('用户名或密码错误', 401);
   }
 
   const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) return Response.json({ ok: false, error: '用户名或密码错误' }, { status: 401 });
+  if (!valid) return jsonErr('用户名或密码错误', 401);
 
   await updateLastLogin(env.DB, user.id);
 

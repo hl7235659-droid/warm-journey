@@ -1,5 +1,5 @@
 import { updateCity } from '@/lib/db';
-import { withAdmin, readJson, isResponse, jsonErr } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -18,6 +18,6 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
   if (Object.keys(parsed).length === 0) return jsonErr('没有需要更新的字段', 422);
 
   const { changes } = await updateCity(env.DB, id, parsed);
-  if (changes === 0) return Response.json({ ok: false, error: '城市不存在' }, { status: 404 });
+  if (changes === 0) return jsonErr('城市不存在', 404);
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });

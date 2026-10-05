@@ -1,5 +1,6 @@
 import { updateAdmin, deleteAdmin } from '@/lib/db';
-import { withAdmin, readJson, isResponse, jsonErr } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, ROLES_SUPER } from '@/lib/http';
+import { ADMIN_ROLES } from '@/lib/types';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
@@ -7,7 +8,7 @@ export const runtime = 'edge';
 
 const UpdateSchema = z.object({
   password: z.string().min(6).max(64).optional(),
-  role: z.enum(['super_admin', 'admin', 'inspector']).optional(),
+  role: z.enum(ADMIN_ROLES).optional(),
   display_name: z.string().max(32).optional(),
 });
 
@@ -30,15 +31,15 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { 
   if (Object.keys(data).length === 0) return jsonErr('没有需要更新的字段', 422);
 
   const { changes } = await updateAdmin(env.DB, id, data);
-  if (changes === 0) return Response.json({ ok: false, error: '账号不存在' }, { status: 404 });
+  if (changes === 0) return jsonErr('账号不存在', 404);
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}, { roles: ['super_admin'], active: true });
+}, { roles: ROLES_SUPER, active: true });
 
 export const DELETE = withAdmin<{ id: string }>(async ({ env, auth, params: { id } }) => {
   if (id === auth.sub) {
     return jsonErr('不能删除当前登录账号', 400);
   }
   const { changes } = await deleteAdmin(env.DB, id);
-  if (changes === 0) return Response.json({ ok: false, error: '账号不存在' }, { status: 404 });
+  if (changes === 0) return jsonErr('账号不存在', 404);
   return Response.json({ ok: true, data: { message: '已删除' } });
-}, { roles: ['super_admin'], active: true });
+}, { roles: ROLES_SUPER, active: true });

@@ -2,6 +2,7 @@
 // 所有 admin 路由必须经 withAdmin 包裹，从机制上杜绝漏写鉴权 / 角色不一致。
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { requireAdmin, requireActiveAdmin, requireRole, type AdminPayload } from '@/lib/auth';
+import { ID_RE } from '@/lib/types';
 import { z } from 'zod';
 
 export interface CloudflareEnvLike {
@@ -17,6 +18,11 @@ export interface CloudflareEnvLike {
 
 type RouteCtx<P> = { params: Promise<P> };
 
+// 写操作角色白名单唯一来源。第三种组合 ["super_admin","admin","inspector"]
+// 直接用 @/lib/types 的 ADMIN_ROLES，不另立别名。
+export const ROLES_CONTENT = ['super_admin', 'admin'] as const;
+export const ROLES_SUPER = ['super_admin'] as const;
+
 export function isResponse(v: unknown): v is Response {
   return v instanceof Response;
 }
@@ -26,6 +32,11 @@ export function jsonErr(error: string, status: number, details?: unknown): Respo
     details === undefined ? { ok: false, error } : { ok: false, error, details },
     { status },
   );
+}
+
+// 路径参数 id 形态校验：`const bad = assertId(id); if (bad) return bad;`
+export function assertId(id: string): Response | undefined {
+  return ID_RE.test(id) ? undefined : jsonErr('id 格式无效', 422);
 }
 
 interface WithAdminArgs<P> {
@@ -41,7 +52,7 @@ interface WithAdminArgs<P> {
 // 注：第二参数按 Next 15 类型约定声明为必选（运行时仍做兼容兜底）。
 export function withAdmin<P = Record<string, string>>(
   handler: (args: WithAdminArgs<P>) => Promise<Response>,
-  opts: { roles?: string[]; active?: boolean } = {},
+  opts: { roles?: readonly string[]; active?: boolean } = {},
 ) {
   return async (req: Request, routeCtx: RouteCtx<P>): Promise<Response> => {
     const { env } = getRequestContext();

@@ -1,5 +1,5 @@
 import { listKnowledge, createKnowledge } from '@/lib/db';
-import { withAdmin, readJson, isResponse, pageParams } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, pageParams, ROLES_CONTENT } from '@/lib/http';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
@@ -33,6 +33,6 @@ export const POST = withAdmin(async ({ req, env }) => {
     return Response.json({ ok: true, data: { id } }, { status: 201 });
   } catch (err) {
     console.error('knowledge create failed:', (err as { message?: string })?.message ?? 'unknown');
-    return Response.json({ ok: false, error: '创建失败' }, { status: 500 });
+    return jsonErr('创建失败', 500);
   }
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });

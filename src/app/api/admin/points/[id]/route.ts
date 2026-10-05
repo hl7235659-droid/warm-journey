@@ -1,5 +1,5 @@
 import { getPoint, updatePoint, snapshotPoint } from '@/lib/db';
-import { withAdmin, readJson, isResponse } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { PointUpdateSchema } from '@/lib/point-schema';
 
 export const runtime = 'edge';
@@ -8,7 +8,7 @@ export const runtime = 'edge';
 
 export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { id } }) => {
   const existing = await getPoint(env.DB, id);
-  if (!existing) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
+  if (!existing) return jsonErr('服务点不存在', 404);
 
   const parsed = await readJson(req, PointUpdateSchema);
   if (isResponse(parsed)) return parsed;
@@ -20,10 +20,10 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { 
   await updatePoint(env.DB, id, data as Parameters<typeof updatePoint>[2]);
 
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });
 
 export const GET = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const point = await getPoint(env.DB, id);
-  if (!point) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
+  if (!point) return jsonErr('服务点不存在', 404);
   return Response.json({ ok: true, data: point });
 });

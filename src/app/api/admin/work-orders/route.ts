@@ -1,5 +1,5 @@
 import { listWorkOrders, createWorkOrder, updateReport } from '@/lib/db';
-import { withAdmin, readJson, isResponse, pageParams } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, pageParams, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -8,8 +8,7 @@ export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 20);
   const result = await listWorkOrders(env.DB, {
-    status:   sp.get('status') ?? undefined,
-    point_id: sp.get('point_id') ?? undefined,
+    status: sp.get('status') ?? undefined,
     page,
     page_size,
   });
@@ -41,7 +40,7 @@ export const POST = withAdmin(async ({ req, env, auth }) => {
   } catch (e) {
     // idx_orders_report：同一上报只允许一张工单，重复建单应报业务冲突而非 500
     if (((e as { message?: string })?.message ?? '').includes('UNIQUE')) {
-      return Response.json({ ok: false, error: '该上报已有关联工单' }, { status: 409 });
+      return jsonErr('该上报已有关联工单', 409);
     }
     throw e;
   }
@@ -52,4 +51,4 @@ export const POST = withAdmin(async ({ req, env, auth }) => {
   }
 
   return Response.json({ ok: true, data: { message: '工单已创建', id: newId } }, { status: 201 });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });

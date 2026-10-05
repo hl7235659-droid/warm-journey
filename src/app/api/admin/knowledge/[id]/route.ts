@@ -1,6 +1,6 @@
 import { updateKnowledge, deleteKnowledge } from '@/lib/db';
-import { withAdmin, readJson, isResponse } from '@/lib/http';
-import { ID_RE, KNOWLEDGE_CATEGORIES } from '@/lib/types';
+import { withAdmin, readJson, isResponse, jsonErr, assertId, ROLES_CONTENT } from '@/lib/http';
+import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -14,27 +14,23 @@ const UpdateSchema = z.object({
 });
 
 export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
-  if (!ID_RE.test(id)) {
-    return Response.json({ ok: false, error: 'id 格式无效' }, { status: 422 });
-  }
+  const bad = assertId(id);
+  if (bad) return bad;
 
   const parsed = await readJson(req, UpdateSchema);
   if (isResponse(parsed)) return parsed;
-  if (Object.keys(parsed).length === 0) {
-    return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
-  }
+  if (Object.keys(parsed).length === 0) return jsonErr('参数验证失败', 422);
 
   const { changes } = await updateKnowledge(env.DB, id, parsed);
-  if (changes === 0) return Response.json({ ok: false, error: '条目不存在' }, { status: 404 });
+  if (changes === 0) return jsonErr('条目不存在', 404);
   return Response.json({ ok: true });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });
 
 export const DELETE = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
-  if (!ID_RE.test(id)) {
-    return Response.json({ ok: false, error: 'id 格式无效' }, { status: 422 });
-  }
+  const bad = assertId(id);
+  if (bad) return bad;
 
   const { changes } = await deleteKnowledge(env.DB, id);
-  if (changes === 0) return Response.json({ ok: false, error: '条目不存在' }, { status: 404 });
+  if (changes === 0) return jsonErr('条目不存在', 404);
   return Response.json({ ok: true });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });

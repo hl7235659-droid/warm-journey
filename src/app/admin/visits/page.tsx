@@ -49,11 +49,7 @@ export default function AdminVisitsPage() {
 
   async function forceCheckout(v: Visit) {
     if (!window.confirm(`确定让 ${v.point_name ?? '该点'} 的这位骑手（${v.rider_token.slice(0, 6)}…）强制离店？`)) return;
-    const j = await api(`/api/admin/visits/${v.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'force_checkout' }),
-    });
+    const j = await api(`/api/admin/visits/${v.id}`, { method: 'PUT' });
     if (j.ok) reload();
     else alert(j.error ?? ACTION_ERR);
   }

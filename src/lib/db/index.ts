@@ -180,12 +180,11 @@ export interface ReportStatusPublic {
 
 export async function listReports(
   db: D1Database,
-  opts: { point_id?: string; status?: string; page?: number; page_size?: number } = {},
+  opts: { status?: string; page?: number; page_size?: number } = {},
 ) {
-  const { point_id, status, page = 1, page_size = 20 } = opts;
+  const { status, page = 1, page_size = 20 } = opts;
   const wheres: string[] = [];
   const bindings: unknown[] = [];
-  if (point_id) { wheres.push('r.point_id = ?'); bindings.push(point_id); }
   if (status) { wheres.push('r.status = ?'); bindings.push(status); }
   const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
   const offset = (page - 1) * page_size;
@@ -240,13 +239,12 @@ export async function createWorkOrder(
 
 export async function listWorkOrders(
   db: D1Database,
-  opts: { status?: string; point_id?: string; page?: number; page_size?: number } = {},
+  opts: { status?: string; page?: number; page_size?: number } = {},
 ) {
-  const { status, point_id, page = 1, page_size = 20 } = opts;
+  const { status, page = 1, page_size = 20 } = opts;
   const wheres: string[] = [];
   const bindings: unknown[] = [];
   if (status) { wheres.push('wo.status = ?'); bindings.push(status); }
-  if (point_id) { wheres.push('wo.point_id = ?'); bindings.push(point_id); }
   const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
   const offset = (page - 1) * page_size;
   const [rows, count] = await Promise.all([
@@ -312,13 +310,9 @@ export async function createInspection(
 
 export async function listInspections(
   db: D1Database,
-  opts: { point_id?: string; page?: number; page_size?: number } = {},
+  opts: { page?: number; page_size?: number } = {},
 ) {
-  const { point_id, page = 1, page_size = 20 } = opts;
-  const wheres: string[] = [];
-  const bindings: unknown[] = [];
-  if (point_id) { wheres.push('i.point_id = ?'); bindings.push(point_id); }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
+  const { page = 1, page_size = 20 } = opts;
   const offset = (page - 1) * page_size;
   const [rows, count] = await Promise.all([
     db.prepare(
@@ -326,9 +320,9 @@ export async function listInspections(
        FROM inspections i
        LEFT JOIN service_points sp ON sp.id = i.point_id
        LEFT JOIN admin_users au ON au.id = i.inspector_id
-       ${where} ORDER BY i.inspected_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<Inspection & { findings: string; images: string }>(),
-    db.prepare(`SELECT COUNT(*) as n FROM inspections i ${where}`).bind(...bindings).first<{ n: number }>(),
+       ORDER BY i.inspected_at DESC LIMIT ? OFFSET ?`,
+    ).bind(page_size, offset).all<Inspection & { findings: string; images: string }>(),
+    db.prepare('SELECT COUNT(*) as n FROM inspections').first<{ n: number }>(),
   ]);
   return {
     items: (rows.results ?? []).map(r => ({
@@ -805,13 +799,12 @@ function maskToken(token: string): string {
 // 管理端：在店 / 今日记录
 export async function listVisits(
   db: D1Database,
-  opts: { point_id?: string; status?: string; page?: number; page_size?: number } = {},
+  opts: { status?: string; page?: number; page_size?: number } = {},
 ) {
   await expireStaleVisits(db);
-  const { point_id, status, page = 1, page_size = 50 } = opts;
+  const { status, page = 1, page_size = 50 } = opts;
   const wheres: string[] = [];
   const bindings: unknown[] = [];
-  if (point_id) { wheres.push('v.point_id = ?'); bindings.push(point_id); }
   if (status) { wheres.push('v.status = ?'); bindings.push(status); }
   const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
   const offset = (page - 1) * page_size;
@@ -861,22 +854,18 @@ export async function createVisitFeedback(
 
 export async function listVisitFeedback(
   db: D1Database,
-  opts: { point_id?: string; page?: number; page_size?: number } = {},
+  opts: { page?: number; page_size?: number } = {},
 ) {
-  const { point_id, page = 1, page_size = 20 } = opts;
-  const wheres: string[] = [];
-  const bindings: unknown[] = [];
-  if (point_id) { wheres.push('f.point_id = ?'); bindings.push(point_id); }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
+  const { page = 1, page_size = 20 } = opts;
   const offset = (page - 1) * page_size;
   const [rows, count, avg] = await Promise.all([
     db.prepare(
       `SELECT f.*, sp.name as point_name FROM visit_feedback f
        LEFT JOIN service_points sp ON sp.id = f.point_id
-       ${where} ORDER BY f.created_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<VisitFeedback & { supports: string }>(),
-    db.prepare(`SELECT COUNT(*) as n FROM visit_feedback f ${where}`).bind(...bindings).first<{ n: number }>(),
-    db.prepare(`SELECT AVG(rating) as a FROM visit_feedback f ${where}`).bind(...bindings).first<{ a: number | null }>(),
+       ORDER BY f.created_at DESC LIMIT ? OFFSET ?`,
+    ).bind(page_size, offset).all<VisitFeedback & { supports: string }>(),
+    db.prepare('SELECT COUNT(*) as n FROM visit_feedback').first<{ n: number }>(),
+    db.prepare('SELECT AVG(rating) as a FROM visit_feedback').first<{ a: number | null }>(),
   ]);
   return {
     items: (rows.results ?? []).map(r => ({ ...r, supports: parseJsonArray(r.supports, 'visit_feedback.supports') })),

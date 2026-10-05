@@ -7,8 +7,7 @@ export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 20);
   const result = await listReports(env.DB, {
-    status:   sp.get('status') ?? undefined,
-    point_id: sp.get('point_id') ?? undefined,
+    status: sp.get('status') ?? undefined,
     page,
     page_size,
   });

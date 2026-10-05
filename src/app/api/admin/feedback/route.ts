@@ -6,10 +6,6 @@ export const runtime = 'edge';
 export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 20);
-  const result = await listVisitFeedback(env.DB, {
-    point_id: sp.get('point_id') ?? undefined,
-    page,
-    page_size,
-  });
+  const result = await listVisitFeedback(env.DB, { page, page_size });
   return Response.json({ ok: true, data: result });
 });

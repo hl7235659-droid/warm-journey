@@ -1,5 +1,5 @@
 import { listCities, createCity } from '@/lib/db';
-import { withAdmin, readJson, isResponse } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -23,6 +23,6 @@ export const POST = withAdmin(async ({ req, env }) => {
     const id = await createCity(env.DB, parsed);
     return Response.json({ ok: true, data: { id } }, { status: 201 });
   } catch {
-    return Response.json({ ok: false, error: '城市已存在' }, { status: 409 });
+    return jsonErr('城市已存在', 409);
   }
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });

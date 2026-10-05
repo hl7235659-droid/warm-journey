@@ -1,5 +1,5 @@
 import { getWorkOrder, updateWorkOrder } from '@/lib/db';
-import { withAdmin, readJson, isResponse } from '@/lib/http';
+import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -15,7 +15,7 @@ const UpdateSchema = z.object({
 
 export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
   const order = await getWorkOrder(env.DB, id);
-  if (!order) return Response.json({ ok: false, error: '工单不存在' }, { status: 404 });
+  if (!order) return jsonErr('工单不存在', 404);
 
   const parsed = await readJson(req, UpdateSchema);
   if (isResponse(parsed)) return parsed;
@@ -30,10 +30,10 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
   }
 
   return Response.json({ ok: true, data: { message: '工单已更新' } });
-}, { roles: ['super_admin', 'admin'] });
+}, { roles: ROLES_CONTENT });
 
 export const GET = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const order = await getWorkOrder(env.DB, id);
-  if (!order) return Response.json({ ok: false, error: '工单不存在' }, { status: 404 });
+  if (!order) return jsonErr('工单不存在', 404);
   return Response.json({ ok: true, data: order });
 });
