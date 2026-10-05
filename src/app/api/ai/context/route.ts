@@ -1,5 +1,6 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { getNearbyPoints } from '@/lib/db';
+import { getNearbyPoints, checkRateLimit } from '@/lib/db';
+import { getClientIp } from '@/lib/http';
 import { fetchWeather } from '@/lib/ai/weather';
 import type { AiContext } from '@/lib/ai/types';
 
@@ -22,6 +23,12 @@ function nowShanghai(): string {
 // 天气失败不拖垮整体（内部 allSettled）；无 lat/lng 时只返回时间 + 天气（wttr.in 按 IP 定位）。
 export async function GET(req: Request) {
   const { env } = getRequestContext();
+
+  // 匿名可触发服务端 WEATHER_API_KEY 出站与 D1 写操作：必须限流
+  if (!(await checkRateLimit(env.DB, `ctx:${getClientIp(req)}`, { limit: 20, windowSec: 60 }))) {
+    return Response.json({ ok: false, error: '请求过于频繁，请稍后再试' }, { status: 429 });
+  }
+
   const url = new URL(req.url);
   const latRaw = url.searchParams.get('lat');
   const lngRaw = url.searchParams.get('lng');

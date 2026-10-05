@@ -1,4 +1,5 @@
 import type { ServicePoint, Report, WorkOrder, Inspection, AdminUser, PointHistory } from '@/lib/types';
+import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
 
 export type D1Env = { DB: D1Database };
 
@@ -114,7 +115,7 @@ export async function listPointHistory(db: D1Database, pointId: string) {
   ).bind(pointId).all<PointHistory & { snapshot: string }>();
   return (rows.results ?? []).map(r => ({
     ...r,
-    snapshot: JSON.parse(r.snapshot) as ServicePoint,
+    snapshot: parseJsonObject<ServicePoint>(r.snapshot, 'point_history.snapshot'),
   }));
 }
 
@@ -126,30 +127,51 @@ export async function createReport(
   db: D1Database,
   data: { point_id: string; category: string; content: string; images: string[] },
 ) {
-  // 显式生成 id（与表默认值同格式：16 位小写 hex），
-  // 因为要把它作为骑手的「查询码」返回，D1 run() 的 last_row_id 拿不到 TEXT 主键。
+  // 显式生成 id（与表默认值同格式：16 位小写 hex），D1 run() 的 last_row_id 拿不到 TEXT 主键。
   const id = genId();
-  await db.prepare(
-    `INSERT INTO reports (id, point_id, category, content, images, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(id, data.point_id, data.category, data.content, JSON.stringify(data.images), unixNow()).run();
-  return id;
+  // 查询码为独立高熵字段（10 位 Crockford base32 ≈ 50 bit），
+  // 不再暴露 report id 前缀，防止批量枚举他人上报。
+  // 唯一索引撞码（概率极低）时重生成重试一次，而不是把 500 甩给用户。
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const code = genRandomCode();
+    try {
+      await db.prepare(
+        `INSERT INTO reports (id, point_id, category, content, images, query_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(id, data.point_id, data.category, data.content, JSON.stringify(data.images), code, unixNow()).run();
+      return { id, query_code: code };
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? '';
+      if (msg.includes('UNIQUE') && msg.includes('query_code')) { lastErr = e; continue; }
+      throw e;
+    }
+  }
+  throw new Error(`查询码生成连续冲突：${(lastErr as { message?: string })?.message ?? 'unknown'}`);
 }
 
-// 免登录进度查询：凭查询码（report id 前缀，≥6 位）查单条上报
+// 免登录进度查询：凭查询码精确匹配。只返回进度必需字段，content 不对公网暴露。
 export async function getReportByCode(db: D1Database, code: string) {
-  if (!/^[0-9a-f]{6,16}$/.test(code)) return null;
+  const normalized = code.trim().toLowerCase();
+  if (!/^[0-9a-z]{10}$/.test(normalized)) {
+    // 兼容旧版查询码（report id 本身，16 位 hex）
+    if (!/^[0-9a-f]{16}$/.test(normalized)) return null;
+    return db.prepare(
+      `SELECT r.id, r.point_id, r.category, r.status, r.created_at, sp.name as point_name
+       FROM reports r LEFT JOIN service_points sp ON sp.id = r.point_id
+       WHERE r.id = ? LIMIT 1`,
+    ).bind(normalized).first<ReportStatusPublic>();
+  }
   return db.prepare(
-    `SELECT r.id, r.point_id, r.category, r.content, r.status, r.created_at,
-            sp.name as point_name
-     FROM reports r
-     LEFT JOIN service_points sp ON sp.id = r.point_id
-     WHERE r.id LIKE ?
-     ORDER BY r.created_at DESC LIMIT 1`,
-  ).bind(`${code}%`).first<{
-    id: string; point_id: string; category: string; content: string;
-    status: string; created_at: number; point_name?: string;
-  }>();
+    `SELECT r.id, r.point_id, r.category, r.status, r.created_at, sp.name as point_name
+     FROM reports r LEFT JOIN service_points sp ON sp.id = r.point_id
+     WHERE r.query_code = ? LIMIT 1`,
+  ).bind(normalized).first<ReportStatusPublic>();
+}
+
+export interface ReportStatusPublic {
+  id: string; point_id: string; category: string;
+  status: string; created_at: number; point_name?: string;
 }
 
 export async function listReports(
@@ -172,7 +194,7 @@ export async function listReports(
     db.prepare(`SELECT COUNT(*) as n FROM reports r ${where}`).bind(...bindings).first<{ n: number }>(),
   ]);
   return {
-    items: (rows.results ?? []).map(r => ({ ...r, images: JSON.parse(r.images) as string[] })),
+    items: (rows.results ?? []).map(r => ({ ...r, images: parseJsonArray(r.images, 'reports.images') })),
     total: count?.n ?? 0, page, page_size,
   };
 }
@@ -191,20 +213,25 @@ export async function updateReport(db: D1Database, id: string, data: Partial<Rep
 // Work Orders
 // ---------------------------------------------------------------------------
 
+// 显式生成 TEXT 主键 id 并返回：绝不能依赖 last_row_id（那是数字 rowid，
+// 与 TEXT 主键无关——work_orders 关联曾因误用它而永久写错）。
 export async function createWorkOrder(
   db: D1Database,
   data: Omit<WorkOrder, 'id' | 'created_at' | 'updated_at' | 'resolved_at'>,
-) {
+): Promise<string> {
   const now = unixNow();
-  return db.prepare(
+  const id = genId();
+  await db.prepare(
     `INSERT INTO work_orders
-       (title,description,point_id,report_id,assigned_to,status,priority,resolution_note,created_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+       (id,title,description,point_id,report_id,assigned_to,status,priority,resolution_note,created_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).bind(
+    id,
     data.title, data.description, data.point_id ?? null, data.report_id ?? null,
     data.assigned_to ?? null, data.status, data.priority, data.resolution_note,
     data.created_by ?? null, now, now,
   ).run();
+  return id;
 }
 
 export async function listWorkOrders(
@@ -249,8 +276,12 @@ export async function updateWorkOrder(db: D1Database, id: string, data: Partial<
   for (const col of cols) {
     if (data[col] !== undefined) { sets.push(`${col} = ?`); bindings.push(data[col]); }
   }
-  if (data.status === 'resolved' && !data.resolved_at) {
+  if ((data.status === 'resolved' || data.status === 'closed') && !data.resolved_at) {
     sets.push('resolved_at = ?'); bindings.push(now);
+  }
+  // 重开（resolved/closed → open/in_progress）时清空解决时间，保持状态机闭环
+  if (data.status === 'open' || data.status === 'in_progress') {
+    sets.push('resolved_at = NULL');
   }
   bindings.push(id);
   await db.prepare(`UPDATE work_orders SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
@@ -298,8 +329,8 @@ export async function listInspections(
   return {
     items: (rows.results ?? []).map(r => ({
       ...r,
-      findings: JSON.parse(r.findings) as string[],
-      images: JSON.parse(r.images) as string[],
+      findings: parseJsonArray(r.findings, 'inspections.findings'),
+      images: parseJsonArray(r.images, 'inspections.images'),
     })),
     total: count?.n ?? 0, page, page_size,
   };
@@ -330,9 +361,18 @@ export async function listAdmins(db: D1Database) {
 // Point Confirms（骑手一键确认「信息无误」）+ 点位实时信号
 // ---------------------------------------------------------------------------
 
-export async function confirmPoint(db: D1Database, pointId: string) {
-  await db.prepare('INSERT INTO point_confirms (point_id, created_at) VALUES (?, ?)')
-    .bind(pointId, unixNow()).run();
+// 骑手「信息无误」确认：同一点位同一设备 30 天内只计一次（无身份去重时可被脚本刷量）
+export async function confirmPoint(db: D1Database, pointId: string, riderToken: string) {
+  const monthAgo = unixNow() - 30 * 86400;
+  // 单条 INSERT ... WHERE NOT EXISTS：并发下同一 rider 不会双写计数
+  await db.prepare(
+    `INSERT INTO point_confirms (point_id, rider_token, created_at)
+     SELECT ?, ?, ?
+     WHERE NOT EXISTS (
+       SELECT 1 FROM point_confirms
+       WHERE point_id = ? AND rider_token = ? AND created_at >= ?
+     )`,
+  ).bind(pointId, riderToken, unixNow(), pointId, riderToken, monthAgo).run();
   const row = await db.prepare('SELECT COUNT(*) as n FROM point_confirms WHERE point_id = ?')
     .bind(pointId).first<{ n: number }>();
   return row?.n ?? 0;
@@ -406,9 +446,10 @@ export async function updateCity(
   for (const col of ['name', 'center_lat', 'center_lng', 'enabled'] as const) {
     if (data[col] !== undefined) { sets.push(`${col} = ?`); bindings.push(data[col]); }
   }
-  if (!sets.length) return;
+  if (!sets.length) return { changes: 0 };
   bindings.push(id);
-  await db.prepare(`UPDATE cities SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  const r = await db.prepare(`UPDATE cities SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  return { changes: r.meta.changes ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -430,9 +471,16 @@ export interface AdminStats {
   avg_rating: number | null;
 }
 
+// 北京时间（UTC+8）当日 0 点的 unix 秒
+export function shanghaiDayStart(now = unixNow()): number {
+  return Math.floor((now + 8 * 3600) / 86400) * 86400 - 8 * 3600;
+}
+
 export async function getAdminStats(db: D1Database): Promise<AdminStats> {
   const since = unixNow() - 30 * 86400;
-  const todayStart = unixNow() - (unixNow() % 86400) - 8 * 3600; // 北京时间 0 点（近似）
+  // 统计前先清过期预约/超时在店，否则 in_store_now 虚高
+  await expireStaleVisits(db);
+  const todayStart = shanghaiDayStart();
   const q = (sql: string, ...b: unknown[]) =>
     db.prepare(sql).bind(...b).first<{ n: number }>().then(r => r?.n ?? 0);
   const [
@@ -462,12 +510,15 @@ export async function getAdminStats(db: D1Database): Promise<AdminStats> {
 }
 
 // 热力图数据：每个点位的坐标 + 近 90 天上报数（权重）
+// 聚合 SQL 一次算完，避免相关子查询逐行 COUNT 的 N+1 退化
 export async function getHeatmapData(db: D1Database) {
   const since = unixNow() - 90 * 86400;
   const rows = await db.prepare(
-    `SELECT sp.id, sp.name, sp.lat, sp.lng, sp.status,
-            (SELECT COUNT(*) FROM reports r WHERE r.point_id = sp.id AND r.created_at >= ?) as report_count
-     FROM service_points sp`,
+    `SELECT sp.id, sp.name, sp.lat, sp.lng, sp.status, COALESCE(rc.n, 0) as report_count
+     FROM service_points sp
+     LEFT JOIN (
+       SELECT point_id, COUNT(*) as n FROM reports WHERE created_at >= ? GROUP BY point_id
+     ) rc ON rc.point_id = sp.id`,
   ).bind(since).all<{
     id: string; name: string; lat: number; lng: number; status: string; report_count: number;
   }>();
@@ -501,11 +552,13 @@ export async function updateAdmin(
     if (data[col] !== undefined) { sets.push(`${col} = ?`); bindings.push(data[col]); }
   }
   bindings.push(id);
-  await db.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  const r = await db.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  return { changes: r.meta.changes ?? 0 };
 }
 
 export async function deleteAdmin(db: D1Database, id: string) {
-  await db.prepare('DELETE FROM admin_users WHERE id = ?').bind(id).run();
+  const r = await db.prepare('DELETE FROM admin_users WHERE id = ?').bind(id).run();
+  return { changes: r.meta.changes ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -526,23 +579,33 @@ export async function maybeAutoCreateWorkOrder(db: D1Database, pointId: string) 
   const point = await getPoint(db, pointId);
   const orderId = genId();
   const now = unixNow();
-  await db.prepare(
-    `INSERT INTO work_orders
-       (id, title, description, point_id, report_id, status, priority, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'open', 'high', ?, ?)`,
-  ).bind(
-    orderId,
-    `【自动】${point?.name ?? '服务点'}集中上报异常（${ids.length} 条）`,
-    `系统检测到该点位 ${ids.length} 条待核实上报，自动创建工单。`,
-    pointId, ids[0], now, now,
-  ).run();
 
-  // 关联所有 pending 上报并置为 processing
-  const placeholders = ids.map(() => '?').join(',');
-  await db.prepare(
-    `UPDATE reports SET status = 'processing', work_order_id = ? WHERE id IN (${placeholders})`,
-  ).bind(orderId, ...ids).run();
-
+  // 建单 + 回写两步放进同一原子批，杜绝"孤儿工单"；
+  // work_orders(report_id) 部分唯一索引兜底并发重复建单（首条 pending id 稳定）。
+  try {
+    await db.batch([
+      db.prepare(
+        `INSERT INTO work_orders
+           (id, title, description, point_id, report_id, status, priority, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'open', 'high', ?, ?)`,
+      ).bind(
+        orderId,
+        `【自动】${point?.name ?? '服务点'}集中上报异常（${ids.length} 条）`,
+        `系统检测到该点位 ${ids.length} 条待核实上报，自动创建工单。`,
+        pointId, ids[0], now, now,
+      ),
+      db.prepare(
+        `UPDATE reports SET status = 'processing', work_order_id = ?
+         WHERE point_id = ? AND status = 'pending' AND work_order_id IS NULL`,
+      ).bind(orderId, pointId),
+    ]);
+  } catch (e) {
+    const msg = (e as { message?: string })?.message ?? '';
+    // 并发触发时另一请求已建单 → 视为已处理
+    if (msg.includes('UNIQUE')) return null;
+    console.error('auto work order failed:', msg || 'unknown');
+    return null;
+  }
   return orderId;
 }
 
@@ -576,8 +639,12 @@ export interface Occupancy {
   capacity: number | null;
 }
 
-export async function getOccupancy(db: D1Database, pointId: string): Promise<Occupancy> {
-  await expireStaleVisits(db);
+export async function getOccupancy(
+  db: D1Database,
+  pointId: string,
+  opts: { skipExpire?: boolean } = {},
+): Promise<Occupancy> {
+  if (!opts.skipExpire) await expireStaleVisits(db);
   const [inStore, reserved, point] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as n FROM visits WHERE point_id = ? AND status = 'in_store'`)
       .bind(pointId).first<{ n: number }>(),
@@ -594,9 +661,19 @@ export async function getOccupancy(db: D1Database, pointId: string): Promise<Occ
   return { in_store: inStore?.n ?? 0, reserved: reserved?.n ?? 0, capacity };
 }
 
+// 同一 IP 在 24 小时内允许的新增预约数：拦脚本批量占位，
+// 同时避免宿舍/基站共享出口 IP 的历史活跃预约把正常骑手永久挡在门外
+export const MAX_ACTIVE_RESERVES_PER_IP = 10;
+
 // 预约：同一点位同一骑手有进行中 visit 则直接返回它（幂等）；
-// 容量校验：在店 + 有效预约 ≥ capacity 时拒绝。
-export async function reserveVisit(db: D1Database, pointId: string, riderToken: string) {
+// 容量校验与插入合并为单条 INSERT ... SELECT 原子完成，并发下不会超卖；
+// 部分唯一索引 (point_id, rider_token) WHERE status IN ('reserved','in_store') 兜底重复预约。
+export async function reserveVisit(
+  db: D1Database,
+  pointId: string,
+  riderToken: string,
+  ip = '',
+) {
   await expireStaleVisits(db);
   const existing = await db.prepare(
     `SELECT * FROM visits WHERE point_id = ? AND rider_token = ? AND status IN ('reserved','in_store')
@@ -604,17 +681,48 @@ export async function reserveVisit(db: D1Database, pointId: string, riderToken: 
   ).bind(pointId, riderToken).first<Visit>();
   if (existing) return { visit: existing, created: false as const };
 
-  const occ = await getOccupancy(db, pointId);
-  if (occ.capacity !== null && occ.in_store + occ.reserved >= occ.capacity) {
-    return { visit: null, created: false as const, full: true as const };
+  if (ip) {
+    const mine = await db.prepare(
+      `SELECT COUNT(*) as n FROM visits
+       WHERE created_ip = ? AND status IN ('reserved','in_store') AND created_at >= ?`,
+    ).bind(ip, unixNow() - 86400).first<{ n: number }>();
+    if ((mine?.n ?? 0) >= MAX_ACTIVE_RESERVES_PER_IP) {
+      return { visit: null, created: false as const, ipLimited: true as const };
+    }
   }
 
   const id = genId();
   const now = unixNow();
-  await db.prepare(
-    `INSERT INTO visits (id, point_id, rider_token, status, reserved_at, created_at)
-     VALUES (?, ?, ?, 'reserved', ?, ?)`,
-  ).bind(id, pointId, riderToken, now, now).run();
+  const checkinCode = genRandomCode();
+  try {
+    // json_valid 兜底：admission 若是历史脏数据（非法 JSON），json_extract 会直接报错打穿到 500
+    const r = await db.prepare(
+      `INSERT INTO visits (id, point_id, rider_token, created_ip, checkin_code, status, reserved_at, created_at)
+       SELECT ?, ?, ?, ?, ?, 'reserved', ?, ?
+       WHERE (
+         SELECT COUNT(*) FROM visits
+         WHERE point_id = ? AND status IN ('reserved','in_store')
+       ) < COALESCE((
+         SELECT CASE WHEN json_valid(admission)
+                     THEN CAST(json_extract(admission, '$.capacity') AS INTEGER) END
+         FROM service_points WHERE id = ?
+       ), 9223372036854775807)`,
+    ).bind(id, pointId, riderToken, ip || null, checkinCode, now, now, pointId, pointId).run();
+    if ((r.meta.changes ?? 0) === 0) {
+      return { visit: null, created: false as const, full: true as const };
+    }
+  } catch (e) {
+    const msg = (e as { message?: string })?.message ?? '';
+    if (msg.includes('UNIQUE')) {
+      // 并发下同一骑手重复预约 → 幂等返回已有 visit
+      const dup = await db.prepare(
+        `SELECT * FROM visits WHERE point_id = ? AND rider_token = ? AND status IN ('reserved','in_store')
+         ORDER BY created_at DESC LIMIT 1`,
+      ).bind(pointId, riderToken).first<Visit>();
+      if (dup) return { visit: dup, created: false as const };
+    }
+    throw e;
+  }
   const visit = await getVisit(db, id);
   return { visit, created: true as const };
 }
@@ -635,14 +743,24 @@ export async function getActiveVisit(db: D1Database, pointId: string, riderToken
   ).bind(pointId, riderToken).first<Visit>();
 }
 
-export async function checkinVisit(db: D1Database, id: string) {
+// 入店确认：必须携带二维码里的一次性入店码，仅凭 visit id 无法远程确认
+export async function checkinVisit(db: D1Database, id: string, code = '') {
   await expireStaleVisits(db);
   const visit = await getVisit(db, id);
   if (!visit) return { error: 'not_found' as const };
+  const expected = (visit as Visit & { checkin_code?: string | null }).checkin_code ?? '';
+  if (!expected || !timingSafeEqualStr(expected, code.trim().toLowerCase())) {
+    return { error: 'bad_code' as const, visit };
+  }
   if (visit.status === 'in_store') return { visit, already: true as const };
   if (visit.status !== 'reserved') return { error: 'invalid_state' as const, visit };
-  await db.prepare(`UPDATE visits SET status = 'in_store', checked_in_at = ? WHERE id = ?`)
-    .bind(unixNow(), id).run();
+  // 条件 UPDATE 保证状态机安全迁移：并发 cancel/checkin 只有一个能成功
+  const r = await db.prepare(
+    `UPDATE visits SET status = 'in_store', checked_in_at = ? WHERE id = ? AND status = 'reserved'`,
+  ).bind(unixNow(), id).run();
+  if ((r.meta.changes ?? 0) === 0) {
+    return { error: 'invalid_state' as const, visit: await getVisit(db, id) };
+  }
   return { visit: await getVisit(db, id) };
 }
 
@@ -652,8 +770,12 @@ export async function checkoutVisit(db: D1Database, id: string, riderToken?: str
   if (riderToken !== undefined && visit.rider_token !== riderToken) return { error: 'forbidden' as const };
   if (visit.status === 'completed') return { visit, already: true as const };
   if (visit.status !== 'in_store') return { error: 'invalid_state' as const, visit };
-  await db.prepare(`UPDATE visits SET status = 'completed', checked_out_at = ? WHERE id = ?`)
-    .bind(unixNow(), id).run();
+  const r = await db.prepare(
+    `UPDATE visits SET status = 'completed', checked_out_at = ? WHERE id = ? AND status = 'in_store'`,
+  ).bind(unixNow(), id).run();
+  if ((r.meta.changes ?? 0) === 0) {
+    return { error: 'invalid_state' as const, visit: await getVisit(db, id) };
+  }
   return { visit: await getVisit(db, id) };
 }
 
@@ -662,8 +784,18 @@ export async function cancelVisit(db: D1Database, id: string, riderToken: string
   if (!visit) return { error: 'not_found' as const };
   if (visit.rider_token !== riderToken) return { error: 'forbidden' as const };
   if (visit.status !== 'reserved') return { error: 'invalid_state' as const, visit };
-  await db.prepare(`UPDATE visits SET status = 'cancelled' WHERE id = ?`).bind(id).run();
+  const r = await db.prepare(
+    `UPDATE visits SET status = 'cancelled' WHERE id = ? AND status = 'reserved'`,
+  ).bind(id).run();
+  if ((r.meta.changes ?? 0) === 0) {
+    return { error: 'invalid_state' as const, visit: await getVisit(db, id) };
+  }
   return { visit: await getVisit(db, id) };
+}
+
+// rider_token 脱敏：管理端列表不批量下发完整 token（等于批量下发"冒充骑手"的钥匙）
+function maskToken(token: string): string {
+  return token.length > 6 ? `${token.slice(0, 6)}…` : '…';
 }
 
 // 管理端：在店 / 今日记录
@@ -684,10 +816,15 @@ export async function listVisits(
       `SELECT v.*, sp.name as point_name FROM visits v
        LEFT JOIN service_points sp ON sp.id = v.point_id
        ${where} ORDER BY v.created_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<Visit>(),
+    ).bind(...bindings, page_size, offset).all<Visit & { created_ip?: string | null }>(),
     db.prepare(`SELECT COUNT(*) as n FROM visits v ${where}`).bind(...bindings).first<{ n: number }>(),
   ]);
-  return { items: rows.results ?? [], total: count?.n ?? 0, page, page_size };
+  return {
+    items: (rows.results ?? []).map(({ created_ip, checkin_code, ...v }) => ({
+      ...v, rider_token: maskToken(v.rider_token),
+    })),
+    total: count?.n ?? 0, page, page_size,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -696,20 +833,25 @@ export async function listVisits(
 
 export async function createVisitFeedback(
   db: D1Database,
-  data: { visit_id: string; rating: number; supports: string[]; suggestion: string },
+  data: { visit_id: string; rider_token: string; rating: number; supports: string[]; suggestion: string },
 ) {
   const visit = await getVisit(db, data.visit_id);
   if (!visit) return { error: 'not_found' as const };
+  // 只有本人（rider_token 匹配）才能评价，防止拿 visit id 冒名抢占
+  if (visit.rider_token !== data.rider_token) return { error: 'forbidden' as const };
   if (visit.status !== 'completed') return { error: 'invalid_state' as const };
   const dup = await db.prepare('SELECT id FROM visit_feedback WHERE visit_id = ?')
     .bind(data.visit_id).first<{ id: string }>();
   if (dup) return { error: 'duplicate' as const };
+  // supports 仅接受服务端白名单标签（防任意字符串注入 AI prompt）
+  const allowed = new Set<string>(FEEDBACK_SUPPORT_TAGS);
+  const supports = [...new Set(data.supports)].filter((t) => allowed.has(t));
   const id = genId();
   await db.prepare(
     `INSERT INTO visit_feedback (id, visit_id, point_id, rating, supports, suggestion, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).bind(id, data.visit_id, visit.point_id, data.rating,
-    JSON.stringify(data.supports), data.suggestion, unixNow()).run();
+    JSON.stringify(supports), data.suggestion, unixNow()).run();
   return { id };
 }
 
@@ -733,7 +875,7 @@ export async function listVisitFeedback(
     db.prepare(`SELECT AVG(rating) as a FROM visit_feedback f ${where}`).bind(...bindings).first<{ a: number | null }>(),
   ]);
   return {
-    items: (rows.results ?? []).map(r => ({ ...r, supports: JSON.parse(r.supports) as string[] })),
+    items: (rows.results ?? []).map(r => ({ ...r, supports: parseJsonArray(r.supports, 'visit_feedback.supports') })),
     total: count?.n ?? 0,
     avg_rating: avg?.a ? Math.round(avg.a * 10) / 10 : null,
     page, page_size,
@@ -812,11 +954,13 @@ export async function updateKnowledge(
   if (data.tags !== undefined) { sets.push('tags = ?'); bindings.push(JSON.stringify(data.tags)); }
   if (data.enabled !== undefined) { sets.push('enabled = ?'); bindings.push(data.enabled ? 1 : 0); }
   bindings.push(id);
-  await db.prepare(`UPDATE ai_knowledge SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  const r = await db.prepare(`UPDATE ai_knowledge SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
+  return { changes: r.meta.changes ?? 0 };
 }
 
 export async function deleteKnowledge(db: D1Database, id: string) {
-  await db.prepare('DELETE FROM ai_knowledge WHERE id = ?').bind(id).run();
+  const r = await db.prepare('DELETE FROM ai_knowledge WHERE id = ?').bind(id).run();
+  return { changes: r.meta.changes ?? 0 };
 }
 
 // 知识检索（注入 prompt 用）：tags/标题/正文命中计分，取 topN
@@ -865,27 +1009,23 @@ export function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
-// crowdHint：近14天同星期同小时段的到店均值（SQL 一次聚合），与当前在店人数对比
-async function crowdHintFor(db: D1Database, pointId: string, inStore: number, capacity: number | null): Promise<string> {
+// crowdHint：近14天同星期同小时段的到店均值，与当前在店人数对比。
+// 业务时间为 UTC+8，两侧都必须加 '+8 hours' 修正（否则整体偏移 8 小时、跨天时星期也错）。
+function crowdHintFromAvg(inStore: number, capacity: number | null, n: number, days: number): string {
   if (capacity !== null && inStore >= capacity) return '名额已满';
-  const twoWeeksAgo = unixNow() - 14 * 86400;
-  const row = await db.prepare(
-    `SELECT COUNT(*) as n,
-            COUNT(DISTINCT date(checked_in_at, 'unixepoch')) as days
-     FROM visits
-     WHERE point_id = ? AND status IN ('in_store','completed')
-       AND checked_in_at >= ?
-       AND strftime('%w', checked_in_at, 'unixepoch') = strftime('%w', 'now')
-       AND CAST(strftime('%H', checked_in_at, 'unixepoch') AS INTEGER) = CAST(strftime('%H','now') AS INTEGER)`,
-  ).bind(pointId, twoWeeksAgo).first<{ n: number; days: number }>();
-  const days = row?.days ?? 0;
   if (!days) return '暂无历史规律';
-  const avg = (row?.n ?? 0) / days;
+  const avg = n / days;
   if (avg <= 0) return inStore === 0 ? '暂无历史规律' : '当前较空';
   if (inStore >= avg * 1.3) return '高峰时段';
   if (inStore <= avg * 0.7) return '当前较空';
   return '与平时相近';
 }
+
+const CROWD_HINT_WHERE = `
+  status IN ('in_store','completed')
+  AND checked_in_at >= ?
+  AND strftime('%w', checked_in_at, 'unixepoch', '+8 hours') = strftime('%w', 'now', '+8 hours')
+  AND CAST(strftime('%H', checked_in_at, 'unixepoch', '+8 hours') AS INTEGER) = CAST(strftime('%H', 'now', '+8 hours') AS INTEGER)`;
 
 export interface NearbyContextPoint {
   id: string;
@@ -903,33 +1043,57 @@ export async function getNearbyPoints(
   lng: number,
   limit = 3,
 ): Promise<NearbyContextPoint[]> {
+  // 过期清理只在最外层跑一次（此前嵌套在 getOccupancy 内，一次 AI context 请求会触发多次全局 UPDATE 写放大）
   await expireStaleVisits(db);
   const rows = await db.prepare(
-    `SELECT id, name, lat, lng, open_hours, services FROM service_points
+    `SELECT id, name, lat, lng, open_hours, services, admission FROM service_points
      WHERE status = 'open' ORDER BY updated_at DESC LIMIT 200`,
-  ).all<{ id: string; name: string; lat: number; lng: number; open_hours: string; services: string }>();
+  ).all<{ id: string; name: string; lat: number; lng: number; open_hours: string; services: string; admission: string }>();
   const ranked = (rows.results ?? [])
     .map((r) => ({ row: r, distM: haversineMeters(lat, lng, r.lat, r.lng) }))
     .sort((a, b) => a.distM - b.distM)
     .slice(0, limit);
+  const ids = ranked.map(({ row }) => row.id);
+  if (ids.length === 0) return [];
 
-  return Promise.all(
-    ranked.map(async ({ row, distM }) => {
-      const occ = await getOccupancy(db, row.id);
-      const hint = await crowdHintFor(db, row.id, occ.in_store, occ.capacity);
-      let services: string[] = [];
-      try { services = JSON.parse(row.services) as string[]; } catch { /* ignore */ }
-      return {
-        id: row.id,
-        name: row.name,
-        dist: formatDistance(distM),
-        inStore: occ.in_store,
-        openHours: row.open_hours,
-        services,
-        crowdHint: hint,
-      };
-    }),
-  );
+  // 选中的少数点位做两次 GROUP BY 聚合，替代此前每点 2+ 次查询
+  const placeholders = ids.map(() => '?').join(',');
+  const [occRows, hintRows] = await Promise.all([
+    db.prepare(
+      `SELECT point_id,
+              SUM(CASE WHEN status = 'in_store' THEN 1 ELSE 0 END) as in_store,
+              SUM(CASE WHEN status = 'reserved' THEN 1 ELSE 0 END) as reserved
+       FROM visits WHERE point_id IN (${placeholders}) AND status IN ('in_store','reserved')
+       GROUP BY point_id`,
+    ).bind(...ids).all<{ point_id: string; in_store: number; reserved: number }>(),
+    db.prepare(
+      `SELECT point_id, COUNT(*) as n, COUNT(DISTINCT date(checked_in_at, 'unixepoch', '+8 hours')) as days
+       FROM visits WHERE point_id IN (${placeholders}) AND ${CROWD_HINT_WHERE}
+       GROUP BY point_id`,
+    ).bind(...ids, unixNow() - 14 * 86400).all<{ point_id: string; n: number; days: number }>(),
+  ]);
+  const occMap = new Map((occRows.results ?? []).map((r) => [r.point_id, r]));
+  const hintMap = new Map((hintRows.results ?? []).map((r) => [r.point_id, r]));
+
+  return ranked.map(({ row, distM }) => {
+    const occ = occMap.get(row.id);
+    const hint = hintMap.get(row.id);
+    let capacity: number | null = null;
+    try {
+      capacity = (JSON.parse(row.admission) as { capacity?: number }).capacity ?? null;
+    } catch { /* 忽略坏数据 */ }
+    let services: string[] = [];
+    try { services = JSON.parse(row.services) as string[]; } catch { /* ignore */ }
+    return {
+      id: row.id,
+      name: row.name,
+      dist: formatDistance(distM),
+      inStore: occ?.in_store ?? 0,
+      openHours: row.open_hours,
+      services,
+      crowdHint: crowdHintFromAvg(occ?.in_store ?? 0, capacity, hint?.n ?? 0, hint?.days ?? 0),
+    };
+  });
 }
 
 // ---------- T2 口碑聚合（详情页"问小暖"注入 prompt） ----------
@@ -940,6 +1104,11 @@ export interface PointFeedbackSummaryData {
   goodRate: number | null;        // 4分及以上占比
   topSupports: Array<{ tag: string; n: number }>;
   recentSuggestions: string[];    // 最近3条非空建议
+}
+
+// 不可信用户内容进入 AI prompt 前的净化：剥离可提前闭合分隔块的角度括号、压平换行并限长
+function sanitizeUntrustedText(raw: string, maxLen = 120): string {
+  return raw.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
 
 export async function getPointFeedbackSummary(db: D1Database, pointId: string): Promise<PointFeedbackSummaryData | null> {
@@ -962,10 +1131,12 @@ export async function getPointFeedbackSummary(db: D1Database, pointId: string): 
   }
   const topSupports = [...supportsCount.entries()]
     .map(([tag, n]) => ({ tag, n }))
+    // 只保留服务端白名单内的标签（历史脏数据不进 prompt）
+    .filter(({ tag }) => (FEEDBACK_SUPPORT_TAGS as readonly string[]).includes(tag))
     .sort((a, b) => b.n - a.n)
     .slice(0, 3);
   const recentSuggestions = list
-    .map((r) => (r.suggestion || '').trim())
+    .map((r) => sanitizeUntrustedText(r.suggestion ?? ''))
     .filter(Boolean)
     .slice(0, 3);
   return {
@@ -977,7 +1148,7 @@ export async function getPointFeedbackSummary(db: D1Database, pointId: string): 
   };
 }
 
-// ---------- AI 限流（每 IP 每分钟 N 次） ----------
+// ---------- 限流（固定窗口 + 上一窗口加权，等效滑动窗口，消除交界处 2 倍突刺） ----------
 
 export async function checkRateLimit(
   db: D1Database,
@@ -986,18 +1157,50 @@ export async function checkRateLimit(
 ): Promise<boolean> {
   const { limit = 20, windowSec = 60 } = opts;
   const now = unixNow();
-  const windowStart = Math.floor(now / windowSec) * windowSec;
+  const curStart = Math.floor(now / windowSec) * windowSec;
+  const prevStart = curStart - windowSec;
+  const elapsed = (now - curStart) / windowSec;
   await db.prepare(
     `INSERT INTO ai_rate (ip, window_start, count) VALUES (?, ?, 1)
      ON CONFLICT(ip, window_start) DO UPDATE SET count = count + 1`,
-  ).bind(key, windowStart).run();
-  const row = await db.prepare('SELECT count FROM ai_rate WHERE ip = ? AND window_start = ?')
-    .bind(key, windowStart).first<{ count: number }>();
-  // 顺手清理 1 天前的旧窗口（PK 范围删除，代价极小）
+  ).bind(key, curStart).run();
+  const rows = await db.prepare(
+    'SELECT window_start, count FROM ai_rate WHERE ip = ? AND window_start IN (?, ?)',
+  ).bind(key, curStart, prevStart).all<{ window_start: number; count: number }>();
+  // 顺手清理旧窗口：保留 7 天，确保 86400s 窗口的"上一窗口"行不被提前删掉
+  // （否则每日限流退化为固定窗口，日界处可短时 2 倍）
   if (now % 60 === 0) {
-    await db.prepare('DELETE FROM ai_rate WHERE window_start < ?').bind(now - 86400).run();
+    await db.prepare('DELETE FROM ai_rate WHERE window_start < ?').bind(now - 7 * 86400).run();
   }
-  return (row?.count ?? 0) <= limit;
+  const cur = rows.results?.find((r) => r.window_start === curStart)?.count ?? 0;
+  const prev = rows.results?.find((r) => r.window_start === prevStart)?.count ?? 0;
+  const effective = prev * (1 - elapsed) + cur;
+  return effective <= limit;
+}
+
+// ---------------------------------------------------------------------------
+// 上传台账：upload 签发的 key 记账，上报引用时校验"确为本 IP 近期上传"
+// ---------------------------------------------------------------------------
+
+export async function recordUpload(db: D1Database, key: string, ip: string) {
+  await db.prepare(
+    'INSERT OR IGNORE INTO uploads (key, ip, created_at) VALUES (?, ?, ?)',
+  ).bind(key, ip, unixNow()).run();
+}
+
+// 返回 keys 中属于该 IP 且在 withinSec 内上传的子集
+export async function filterOwnedUploads(
+  db: D1Database,
+  keys: string[],
+  ip: string,
+  withinSec = 24 * 3600,
+): Promise<Set<string>> {
+  if (keys.length === 0) return new Set();
+  const placeholders = keys.map(() => '?').join(',');
+  const rows = await db.prepare(
+    `SELECT key FROM uploads WHERE key IN (${placeholders}) AND ip = ? AND created_at >= ?`,
+  ).bind(...keys, ip, unixNow() - withinSec).all<{ key: string }>();
+  return new Set((rows.results ?? []).map((r) => r.key));
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,11 +1215,49 @@ function genId() {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// 查询码：10 位 Crockford base32（小写、去除 i/l/o/u 防误读），熵 ≈ 50 bit
+// 10 位 Crockford base32 ≈ 50 bit 随机码：上报查询码与一次性入店码共用
+export function genRandomCode() {
+  const alphabet = '0123456789abcdefghjkmnpqrstvwxyz';
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => alphabet[b % 32]).join('');
+}
+
+// 定长字符串恒定时间比较：避免入店码校验被时序攻击逐位试探
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 type RawPoint = ServicePoint & { services: string; admission: string };
+// 坏数据（非法 JSON）不应把整条读路径打成 500：解析失败降级为空值并留痕
+function parseJsonArray<T = string>(raw: string | null | undefined, ctx: string): T[] {
+  try {
+    const v = JSON.parse(raw ?? '[]');
+    return Array.isArray(v) ? (v as T[]) : [];
+  } catch {
+    console.error(`malformed JSON array in ${ctx}`);
+    return [];
+  }
+}
+
+function parseJsonObject<T>(raw: string | null | undefined, ctx: string): T {
+  try {
+    const v = JSON.parse(raw ?? '{}');
+    return v && typeof v === 'object' ? (v as T) : ({} as T);
+  } catch {
+    console.error(`malformed JSON object in ${ctx}`);
+    return {} as T;
+  }
+}
+
 function deserializePoint(r: RawPoint): ServicePoint {
   return {
     ...r,
-    services: JSON.parse(r.services) as string[],
-    admission: JSON.parse(r.admission) as ServicePoint['admission'],
+    services: parseJsonArray(r.services, 'service_points.services'),
+    admission: parseJsonObject<ServicePoint['admission']>(r.admission, 'service_points.admission'),
   };
 }

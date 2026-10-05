@@ -1,49 +1,41 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
-import { listInspections, createInspection } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth';
+import { listInspections, createInspection, getPoint } from '@/lib/db';
+import { withAdmin, readJson, isResponse, pageParams } from '@/lib/http';
 import { z } from 'zod';
-import type { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
-export async function GET(req: NextRequest) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-
-  const sp = req.nextUrl.searchParams;
+export const GET = withAdmin(async ({ req, env }) => {
+  const sp = new URL(req.url).searchParams;
+  const { page, page_size } = pageParams(sp, 20);
   const result = await listInspections(env.DB, {
     point_id: sp.get('point_id') ?? undefined,
-    page:     Number(sp.get('page') ?? 1),
-    page_size: Number(sp.get('page_size') ?? 20),
+    page,
+    page_size,
   });
   return Response.json({ ok: true, data: result });
-}
+});
 
 const CreateSchema = z.object({
   point_id:   z.string().min(1),
   result:     z.enum(['pass', 'fail', 'partial']),
-  findings:   z.array(z.string()).default([]),
-  images:     z.array(z.string()).max(8).default([]),
-  notes:      z.string().default(''),
+  findings:   z.array(z.string().max(200)).max(20).default([]),
+  images:     z.array(z.string().max(120)).max(8).default([]),
+  notes:      z.string().max(2000).default(''),
   inspected_at: z.number().optional(),
 });
 
-export async function POST(req: Request) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
+export const POST = withAdmin(async ({ req, env, auth }) => {
+  const parsed = await readJson(req, CreateSchema);
+  if (isResponse(parsed)) return parsed;
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
-
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+  // point_id 必须真实存在，防孤儿巡检记录
+  const point = await getPoint(env.DB, parsed.point_id);
+  if (!point) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
 
   await createInspection(env.DB, {
-    ...parsed.data,
+    ...parsed,
     inspector_id: auth.sub,
-    inspected_at: parsed.data.inspected_at ?? Math.floor(Date.now() / 1000),
+    inspected_at: parsed.inspected_at ?? Math.floor(Date.now() / 1000),
   });
   return Response.json({ ok: true, data: { message: '巡检记录已提交' } }, { status: 201 });
-}
+}, { roles: ['super_admin', 'admin', 'inspector'] });

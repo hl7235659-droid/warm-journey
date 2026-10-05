@@ -23,11 +23,43 @@ const BLOCKED_HOST = [
   /^\[fd/i,
 ];
 
-export function validateBaseUrl(raw: string): BaseUrlResult {
+// 受信任的 OpenAI 兼容出站主机名：本站是公网可访问的转发点，
+// 若允许任意 baseUrl，任何人可拿本站当跳板打第三方端点。
+// 需要接入自建/中转域名时，用 Pages 环境变量 AI_ALLOWED_HOSTS="a.com,b.com" 追加。
+const TRUSTED_HOSTS = new Set([
+  'api.openai.com',
+  'api.deepseek.com',
+  'api.moonshot.cn',
+  'open.bigmodel.cn',
+  'dashscope.aliyuncs.com',
+  'ark.cn-beijing.volces.com',
+  'api.stepfun.com',
+  'api.x.ai',
+  'openrouter.ai',
+  'api.groq.com',
+  'api.siliconflow.cn',
+  'generativelanguage.googleapis.com',
+  'api.anthropic.com',
+]);
+
+export function allowedProviderHosts(extra?: string): string[] {
+  const custom = (extra ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  return [...custom];
+}
+
+export function isTrustedProviderHost(hostname: string, extraHosts: string[] = []): boolean {
+  const h = hostname.toLowerCase();
+  if (extraHosts.includes(h)) return true;
+  if (TRUSTED_HOSTS.has(h)) return true;
+  // 子域放行（如 api.us-east.openrouter.ai），但必须是受信任项的结尾子域
+  return [...TRUSTED_HOSTS, ...extraHosts].some((t) => h.endsWith(`.${t}`));
+}
+
+export function validateBaseUrl(raw: string, extraHostsCsv?: string): BaseUrlResult {
   const input = (raw || '').trim();
   if (!input) return { ok: false, url: '', error: '地址不能为空' };
-  if (!/^https?:\/\//i.test(input)) {
-    return { ok: false, url: '', error: '地址必须以 http:// 或 https:// 开头' };
+  if (!/^https:\/\//i.test(input)) {
+    return { ok: false, url: '', error: '地址必须以 https:// 开头（仅支持 HTTPS）' };
   }
   let u: URL;
   try {
@@ -37,6 +69,9 @@ export function validateBaseUrl(raw: string): BaseUrlResult {
   }
   if (BLOCKED_HOST.some((re) => re.test(u.hostname))) {
     return { ok: false, url: '', error: '不支持内网或本机地址' };
+  }
+  if (!isTrustedProviderHost(u.hostname, allowedProviderHosts(extraHostsCsv))) {
+    return { ok: false, url: '', error: '该域名不在受信任的接口列表内，请改用主流 OpenAI 兼容服务或用 AI_ALLOWED_HOSTS 追加' };
   }
   // 去尾斜杠：https://api.x.com/v1/ → https://api.x.com/v1；根路径 → origin
   const path = u.pathname.replace(/\/+$/, '');

@@ -9,12 +9,17 @@ import { normalizeMessages } from '@/lib/ai/truncate';
 import { extractAction } from '@/lib/ai/actions';
 import { localFallback } from '@/lib/ai/fallback';
 import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
+import { requireAdmin } from '@/lib/auth';
+import { getClientIp, jsonErr } from '@/lib/http';
 import { STATUS_LABELS } from '@/lib/types';
 import type { AiContext, AiAction, ChatResponse } from '@/lib/ai/types';
 
 export const runtime = 'edge';
 
 const REQUEST_TIMEOUT_MS = 90_000;
+
+// 全站每日对话总量上限（服务端 Key 兜底消耗的总闸门，按 UTC 日计）
+const GLOBAL_DAILY_LIMIT = 3000;
 
 const BodySchema = z.object({
   audience: z.enum(['rider', 'admin']).optional(),
@@ -50,10 +55,6 @@ const BodySchema = z.object({
   }).optional(),
 });
 
-function clientIp(req: Request): string {
-  return req.headers.get('cf-connecting-ip') ?? 'local';
-}
-
 function localResponse(text: string, action?: ChatResponse['action']): Response {
   const body: ChatResponse = { ok: true, mode: 'local', text, action };
   return Response.json(body, { headers: { 'X-Ai-Mode': 'local' } });
@@ -62,27 +63,50 @@ function localResponse(text: string, action?: ChatResponse['action']): Response 
 // POST /api/ai/chat
 export async function POST(req: Request) {
   const { env } = getRequestContext();
+  const e = env as unknown as {
+    JWT_SECRET?: string;
+    AI_BASE_URL?: string;
+    AI_API_KEY?: string;
+    AI_MODEL?: string;
+    AI_ALLOWED_HOSTS?: string;
+  };
 
+  // 管理端受众（AI 周报等）必须先过管理员鉴权
   let body: unknown;
   try { body = await req.json(); } catch {
-    return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 });
+    return jsonErr('请求格式错误', 400);
   }
+  const audienceProbe = (body as { audience?: unknown } | null)?.audience;
+  if (audienceProbe === 'admin') {
+    const auth = await requireAdmin(req, e);
+    if (auth instanceof Response) return auth;
+  }
+
   const parsed = BodySchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+  if (!parsed.success) return jsonErr('参数验证失败', 422);
   const input = parsed.data;
 
-  // 限流：每 IP 每分钟 20 次
-  const allowed = await checkRateLimit(env.DB, clientIp(req), { limit: 20, windowSec: 60 });
+  const ip = getClientIp(req);
+  // 限流：每 IP 每分钟 20 次（双窗口滑动）
+  const allowed = await checkRateLimit(env.DB, `chat:${ip}`, { limit: 20, windowSec: 60 });
   if (!allowed) {
-    return Response.json(
-      { ok: false, error: '小暖有点忙，请一分钟后再试～' },
-      { status: 429 },
-    );
+    return jsonErr('小暖有点忙，请一分钟后再试～', 429);
+  }
+  // 每 IP 每日 200 次：压住单点滥用
+  const dailyAllowed = await checkRateLimit(env.DB, `chat:daily:${ip}`, { limit: 200, windowSec: 86400 });
+  if (!dailyAllowed) {
+    return jsonErr('今日的对话额度已用完，请明天再来～', 429);
+  }
+  // 全站每日总量：分布式 IP / IPv6 轮换无法线性放大服务端 Key 消耗
+  const day = Math.floor(Date.now() / 86400_000);
+  const globalAllowed = await checkRateLimit(env.DB, `chat:global:${day}`, { limit: GLOBAL_DAILY_LIMIT, windowSec: 86400 });
+  if (!globalAllowed) {
+    return jsonErr('今天的小暖太忙了，请明天再来～', 429);
   }
 
   const history = normalizeMessages(input.messages);
   const lastUser = [...history].reverse().find((m) => m.role === 'user');
-  if (!lastUser) return Response.json({ ok: false, error: '缺少用户消息' }, { status: 422 });
+  if (!lastUser) return jsonErr('缺少用户消息', 422);
 
   // ---------- prompt 组装 ----------
   const audience = input.audience ?? 'rider';
@@ -150,24 +174,26 @@ export async function POST(req: Request) {
     dataText: input.dataText,
   });
 
-  // ---------- 提供商解析：请求体 → 环境变量 → 本地降级 ----------
+  // ---------- 提供商解析：请求自带（BYOK）→ 环境变量 → 本地降级 ----------
+  // BYOK 仅走 https（validateBaseUrl 强制），且受每 IP 与全站每日上限约束；
+  // 服务端 AI_* 环境变量只作为兜底，同样受每日上限约束。
   let baseUrl = '';
   let apiKey = '';
   let model = '';
   let temperature = 0.3;
   if (input.provider) {
-    const v = validateBaseUrl(input.provider.baseUrl);
-    if (!v.ok) return Response.json({ ok: false, error: `提供商地址无效：${v.error}` }, { status: 422 });
+    const v = validateBaseUrl(input.provider.baseUrl, e.AI_ALLOWED_HOSTS);
+    if (!v.ok) return jsonErr(`提供商地址无效：${v.error}`, 422);
     baseUrl = v.url;
     apiKey = input.provider.apiKey;
     model = input.provider.model;
     temperature = input.provider.temperature ?? 0.3;
-  } else if (env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL) {
-    const v = validateBaseUrl(env.AI_BASE_URL);
+  } else if (e.AI_BASE_URL && e.AI_API_KEY && e.AI_MODEL) {
+    const v = validateBaseUrl(e.AI_BASE_URL, e.AI_ALLOWED_HOSTS);
     if (v.ok) {
       baseUrl = v.url;
-      apiKey = env.AI_API_KEY;
-      model = env.AI_MODEL;
+      apiKey = e.AI_API_KEY;
+      model = e.AI_MODEL;
     }
   }
 
@@ -200,7 +226,8 @@ export async function POST(req: Request) {
     });
     if (!res.ok) {
       console.error('ai chat: provider http error, status:', res.status);
-      return remoteFailedFallback(lastUser.content, context, pointInfo, `模型接口返回错误（HTTP ${res.status}）`, { audience, dataText: input.dataText });
+      // 上游错误不透传原文，只给通用文案（详情留服务端日志）
+      return remoteFailedFallback(lastUser.content, context, pointInfo, '模型接口暂时不可用', { audience, dataText: input.dataText });
     }
     const payload = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -209,12 +236,8 @@ export async function POST(req: Request) {
     const rawText = payload.choices?.[0]?.message?.content ?? '';
     if (!rawText) {
       const errMsg = typeof payload.error === 'string' ? payload.error : payload.error?.message;
-      console.error('ai chat: provider empty reply');
-      return remoteFailedFallback(
-        lastUser.content, context, pointInfo,
-        errMsg ? `模型接口错误：${errMsg.slice(0, 120)}` : '模型接口返回空回复',
-        { audience, dataText: input.dataText },
-      );
+      console.error('ai chat: provider empty reply:', errMsg?.slice(0, 200) ?? 'no error detail');
+      return remoteFailedFallback(lastUser.content, context, pointInfo, '模型接口返回异常', { audience, dataText: input.dataText });
     }
 
     // 解析并校验 action
@@ -225,13 +248,12 @@ export async function POST(req: Request) {
     return Response.json(body);
   } catch (e) {
     const err = e as { name?: string; message?: string };
-    const reason = err?.name === 'AbortError' ? '请求超时（90s）' : '网络错误';
-    console.error('ai chat: fetch failed:', err?.name ?? 'unknown');
-    return remoteFailedFallback(lastUser.content, context, pointInfo, reason, { audience, dataText: input.dataText });
+    console.error('ai chat: fetch failed:', err?.name ?? 'unknown', err?.message ?? '');
+    return remoteFailedFallback(lastUser.content, context, pointInfo, '网络异常，暂时无法联网回答', { audience, dataText: input.dataText });
   }
 }
 
-// 远端失败 → 本地降级回答，并在文本中如实告知原因
+// 远端失败 → 本地降级回答，并在文本中如实告知已切换本地模式
 function remoteFailedFallback(
   userMessage: string,
   context: AiContext | undefined,

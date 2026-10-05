@@ -1,6 +1,5 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
 import { getPoint } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth';
+import { withAdmin } from '@/lib/http';
 import qrcode from 'qrcode-generator';
 
 export const runtime = 'edge';
@@ -8,12 +7,7 @@ export const runtime = 'edge';
 // 服务点二维码（SVG）：
 //   ?type=entry（默认）→ 扫码打开 C 端详情页
 //   ?type=checkout     → 店内张贴的「离店码」，骑手扫码离店
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-
-  const { id } = await params;
+export const GET = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
   const point = await getPoint(env.DB, id);
   if (!point) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
 
@@ -30,6 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     headers: {
       'Content-Type': 'image/svg+xml',
       'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
-}
+});

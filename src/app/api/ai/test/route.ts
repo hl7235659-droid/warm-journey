@@ -1,6 +1,9 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
 import { z } from 'zod';
+import { checkRateLimit } from '@/lib/db';
 import { validateBaseUrl, fetchWithTimeout, chatCompletionsUrl } from '@/lib/ai/fetch';
+import { requireAdmin } from '@/lib/auth';
+import { getClientIp, jsonErr } from '@/lib/http';
 
 export const runtime = 'edge';
 
@@ -10,23 +13,35 @@ const BodySchema = z.object({
   model: z.string().min(1).max(120),
 });
 
-// POST /api/ai/test — 提供商连通性测试：发一条极小请求，要求模型只回四个字
+// POST /api/ai/test — 提供商连通性测试：发一条极小请求，要求模型只回四个字。
+// 限流每 IP 每分钟 10 次；服务端环境变量 Key 仅对已登录管理员开放（防匿名白嫖服务器配额）。
 export async function POST(req: Request) {
   const { env } = getRequestContext();
+  const e = env as unknown as { JWT_SECRET?: string; AI_API_KEY?: string; AI_ALLOWED_HOSTS?: string };
+
+  const ip = getClientIp(req);
+  if (!(await checkRateLimit(env.DB, `aitest:${ip}`, { limit: 10, windowSec: 60 }))) {
+    return jsonErr('测试过于频繁，请一分钟后再试', 429);
+  }
 
   let body: unknown;
   try { body = await req.json(); } catch {
-    return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 });
+    return jsonErr('请求格式错误', 400);
   }
   const parsed = BodySchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+  if (!parsed.success) return jsonErr('参数验证失败', 422);
 
-  const v = validateBaseUrl(parsed.data.baseUrl);
-  if (!v.ok) return Response.json({ ok: false, error: `地址无效：${v.error}` }, { status: 422 });
+  const v = validateBaseUrl(parsed.data.baseUrl, e.AI_ALLOWED_HOSTS);
+  if (!v.ok) return jsonErr(`地址无效：${v.error}`, 422);
 
-  // 环境变量兜底：请求体没带 key 时用服务端配置（用于"演示提供商"测试）
-  const apiKey = parsed.data.apiKey || env.AI_API_KEY || '';
-  if (!apiKey) return Response.json({ ok: false, error: '缺少 API Key（本机未填，服务器也未配置）' }, { status: 422 });
+  // 请求体没带 key 时，仅管理员可用服务端配置测试"演示提供商"
+  let apiKey = parsed.data.apiKey;
+  if (!apiKey) {
+    const auth = await requireAdmin(req, e);
+    if (auth instanceof Response) return jsonErr('缺少 API Key（服务端密钥仅管理员可用）', 401);
+    apiKey = e.AI_API_KEY || '';
+  }
+  if (!apiKey) return jsonErr('缺少 API Key（本机未填，服务器也未配置）', 422);
 
   try {
     const res = await fetchWithTimeout(chatCompletionsUrl(v.url), 20_000, {
@@ -54,7 +69,8 @@ export async function POST(req: Request) {
     const reply = payload.choices?.[0]?.message?.content?.trim();
     if (!reply) {
       const errMsg = typeof payload.error === 'string' ? payload.error : payload.error?.message;
-      return Response.json({ ok: false, error: errMsg ? `接口报错：${errMsg.slice(0, 120)}` : '接口返回空回复' }, { status: 200 });
+      console.error('ai test: provider empty reply:', errMsg?.slice(0, 200) ?? 'no error detail');
+      return Response.json({ ok: false, error: '接口返回空回复' }, { status: 200 });
     }
     return Response.json({ ok: true, data: { reply: reply.slice(0, 50) } });
   } catch (e) {

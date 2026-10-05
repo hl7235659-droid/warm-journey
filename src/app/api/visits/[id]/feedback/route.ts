@@ -1,5 +1,6 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { createVisitFeedback } from '@/lib/db';
+import { createVisitFeedback, checkRateLimit } from '@/lib/db';
+import { readJson, isResponse, getClientIp } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -16,18 +17,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { env } = getRequestContext();
   const { id } = await params;
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
-  const parsed = FeedbackSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+  // 防刷：每 IP 每分钟 10 次
+  if (!(await checkRateLimit(env.DB, `fb:${getClientIp(req)}`, { limit: 10, windowSec: 60 }))) {
+    return Response.json({ ok: false, error: '操作过于频繁，请稍后再试' }, { status: 429 });
+  }
 
+  const parsed = await readJson(req, FeedbackSchema);
+  if (isResponse(parsed)) return parsed;
+
+  // rider_token 必须与 visit 归属匹配，防止拿 visit id 冒名抢占评价
   const result = await createVisitFeedback(env.DB, {
     visit_id: id,
-    rating: parsed.data.rating,
-    supports: parsed.data.supports,
-    suggestion: parsed.data.suggestion,
+    rider_token: parsed.rider_token,
+    rating: parsed.rating,
+    supports: parsed.supports,
+    suggestion: parsed.suggestion,
   });
   if (result.error === 'not_found') return Response.json({ ok: false, error: '记录不存在' }, { status: 404 });
+  if (result.error === 'forbidden') return Response.json({ ok: false, error: '只能评价自己的进店记录' }, { status: 403 });
   if (result.error === 'invalid_state') return Response.json({ ok: false, error: '离店后才能评价' }, { status: 409 });
   if (result.error === 'duplicate') return Response.json({ ok: false, error: '已提交过评价' }, { status: 409 });
   return Response.json({ ok: true, data: { id: result.id } }, { status: 201 });

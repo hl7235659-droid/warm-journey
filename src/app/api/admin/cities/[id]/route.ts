@@ -1,6 +1,5 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
 import { updateCity } from '@/lib/db';
-import { requireAdmin, requireRole } from '@/lib/auth';
+import { withAdmin, readJson, isResponse, jsonErr } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -12,20 +11,13 @@ const UpdateSchema = z.object({
   enabled: z.union([z.literal(0), z.literal(1)]).optional(),
 });
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-  const forbidden = requireRole(auth, ['super_admin', 'admin']);
-  if (forbidden) return forbidden;
+export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
+  const parsed = await readJson(req, UpdateSchema);
+  if (isResponse(parsed)) return parsed;
+  // 空 body 时 UPDATE 影响 0 行，不能误报「城市不存在」
+  if (Object.keys(parsed).length === 0) return jsonErr('没有需要更新的字段', 422);
 
-  const { id } = await params;
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
-
-  const parsed = UpdateSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
-
-  await updateCity(env.DB, id, parsed.data);
+  const { changes } = await updateCity(env.DB, id, parsed);
+  if (changes === 0) return Response.json({ ok: false, error: '城市不存在' }, { status: 404 });
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}
+}, { roles: ['super_admin', 'admin'] });

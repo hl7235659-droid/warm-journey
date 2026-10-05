@@ -1,26 +1,35 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { getAdminByUsername, updateLastLogin } from '@/lib/db';
+import { getAdminByUsername, updateLastLogin, checkRateLimit } from '@/lib/db';
 import { signToken } from '@/lib/auth';
+import { readJson, isResponse, getClientIp } from '@/lib/http';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
 export const runtime = 'edge';
 
 const LoginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
+  username: z.string().min(1).max(64),
+  password: z.string().min(1).max(128),
 });
 
 export async function POST(req: Request) {
   const { env } = getRequestContext();
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
+  // 登录频控：每 IP 5 分钟内最多 10 次，阻断无限爆破
+  const ip = getClientIp(req);
+  try {
+    if (!(await checkRateLimit(env.DB, `login:${ip}`, { limit: 10, windowSec: 300 }))) {
+      return Response.json({ ok: false, error: '尝试过于频繁，请稍后再试' }, { status: 429 });
+    }
+  } catch (e) {
+    // D1 抖动时放行：限流器故障不应把全体管理员锁在门外
+    console.error('login rate limit unavailable:', (e as { message?: string })?.message ?? 'unknown');
+  }
 
-  const parsed = LoginSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '用户名和密码不能为空' }, { status: 422 });
+  const parsed = await readJson(req, LoginSchema);
+  if (isResponse(parsed)) return parsed;
 
-  const { username, password } = parsed.data;
+  const { username, password } = parsed;
   const user = await getAdminByUsername(env.DB, username);
 
   if (!user) {
@@ -40,6 +49,10 @@ export async function POST(req: Request) {
     jwtEnv,
   );
 
+  // HTTPS 站点必须带 Secure：防止 Cookie 经明文 HTTP 泄露
+  const isHttps = new URL(req.url).protocol === 'https:';
+  const cookieAttrs = `wj_admin=${token}; Path=/; HttpOnly;${isHttps ? ' Secure;' : ''} SameSite=Strict; Max-Age=28800`;
+
   return new Response(JSON.stringify({ ok: true, data: { token, user: {
     id: user.id, username: user.username, role: user.role, display_name: user.display_name,
   } } }), {
@@ -47,7 +60,7 @@ export async function POST(req: Request) {
     headers: {
       'Content-Type': 'application/json',
       // HttpOnly cookie so the browser sends it automatically
-      'Set-Cookie': `wj_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800`,
+      'Set-Cookie': cookieAttrs,
     },
   });
 }

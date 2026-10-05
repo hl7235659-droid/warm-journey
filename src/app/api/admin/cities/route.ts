@@ -1,18 +1,13 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
 import { listCities, createCity } from '@/lib/db';
-import { requireAdmin, requireRole } from '@/lib/auth';
+import { withAdmin, readJson, isResponse } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
 
-export async function GET(req: Request) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-
+export const GET = withAdmin(async ({ env }) => {
   const cities = await listCities(env.DB);
   return Response.json({ ok: true, data: cities });
-}
+});
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(20),
@@ -20,23 +15,14 @@ const CreateSchema = z.object({
   center_lng: z.number().min(-180).max(180),
 });
 
-export async function POST(req: Request) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-  const forbidden = requireRole(auth, ['super_admin', 'admin']);
-  if (forbidden) return forbidden;
-
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
-
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+export const POST = withAdmin(async ({ req, env }) => {
+  const parsed = await readJson(req, CreateSchema);
+  if (isResponse(parsed)) return parsed;
 
   try {
-    const id = await createCity(env.DB, parsed.data);
+    const id = await createCity(env.DB, parsed);
     return Response.json({ ok: true, data: { id } }, { status: 201 });
   } catch {
     return Response.json({ ok: false, error: '城市已存在' }, { status: 409 });
   }
-}
+}, { roles: ['super_admin', 'admin'] });

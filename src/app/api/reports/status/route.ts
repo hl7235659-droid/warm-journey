@@ -1,11 +1,19 @@
 import { getRequestContext } from '@cloudflare/next-on-pages';
-import { getReportByCode } from '@/lib/db';
+import { getReportByCode, checkRateLimit } from '@/lib/db';
+import { getClientIp } from '@/lib/http';
 
 export const runtime = 'edge';
 
-// 免登录上报进度查询：GET /api/reports/status?code=<查询码（report id 前缀，≥6 位）>
+// 免登录上报进度查询：GET /api/reports/status?code=<查询码>
+// 查询码为独立高熵字段（10 位 base32）；响应不含 content 全文，防批量枚举套取他人上报内容。
 export async function GET(req: Request) {
   const { env } = getRequestContext();
+
+  const ip = getClientIp(req);
+  if (!(await checkRateLimit(env.DB, `rstatus:${ip}`, { limit: 10, windowSec: 60 }))) {
+    return Response.json({ ok: false, error: '查询过于频繁，请稍后再试' }, { status: 429 });
+  }
+
   const code = (new URL(req.url).searchParams.get('code') ?? '').trim().toLowerCase();
 
   if (!code) {

@@ -1,20 +1,15 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
 import { listVisitFeedback } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth';
-import type { NextRequest } from 'next/server';
+import { withAdmin, pageParams } from '@/lib/http';
 
 export const runtime = 'edge';
 
-export async function GET(req: NextRequest) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-
-  const sp = req.nextUrl.searchParams;
+export const GET = withAdmin(async ({ req, env }) => {
+  const sp = new URL(req.url).searchParams;
+  const { page, page_size } = pageParams(sp, 20);
   const result = await listVisitFeedback(env.DB, {
     point_id: sp.get('point_id') ?? undefined,
-    page:     Number(sp.get('page') ?? 1),
-    page_size: Number(sp.get('page_size') ?? 20),
+    page,
+    page_size,
   });
   return Response.json({ ok: true, data: result });
-}
+});

@@ -101,6 +101,10 @@ export interface Visit {
   checked_in_at: number | null;
   checked_out_at: number | null;
   created_at: number;
+  // 反滥用内部字段：getVisit 的 SELECT * 会带出，公开响应必须剔除
+  created_ip?: string | null;
+  // 一次性入店码：只随预约响应/二维码走，第三方读取口必须剔除
+  checkin_code?: string | null;
 }
 
 export interface VisitFeedback {

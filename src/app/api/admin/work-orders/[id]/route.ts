@@ -1,6 +1,5 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
-import { getWorkOrder, updateWorkOrder, updateReport } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth';
+import { getWorkOrder, updateWorkOrder } from '@/lib/db';
+import { withAdmin, readJson, isResponse } from '@/lib/http';
 import { z } from 'zod';
 
 export const runtime = 'edge';
@@ -14,38 +13,27 @@ const UpdateSchema = z.object({
   resolution_note: z.string().optional(),
 });
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
-  const auth = await requireAdmin(req, env as { JWT_SECRET?: string });
-  if (auth instanceof Response) return auth;
-
-  const { id } = await params;
+export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }) => {
   const order = await getWorkOrder(env.DB, id);
   if (!order) return Response.json({ ok: false, error: '工单不存在' }, { status: 404 });
 
-  let body: unknown;
-  try { body = await req.json(); } catch { return Response.json({ ok: false, error: '请求格式错误' }, { status: 400 }); }
+  const parsed = await readJson(req, UpdateSchema);
+  if (isResponse(parsed)) return parsed;
 
-  const parsed = UpdateSchema.safeParse(body);
-  if (!parsed.success) return Response.json({ ok: false, error: '参数验证失败' }, { status: 422 });
+  await updateWorkOrder(env.DB, id, parsed);
 
-  await updateWorkOrder(env.DB, id, parsed.data);
-
-  // Sync linked report status when work order resolves
-  if (parsed.data.status === 'resolved' && order.report_id) {
-    await updateReport(env.DB, order.report_id, { status: 'resolved' });
-  }
-  if (parsed.data.status === 'closed' && order.report_id) {
-    await updateReport(env.DB, order.report_id, { status: 'closed' });
+  // 工单落到 resolved/closed 时，按 work_order_id 批量回写所有关联上报
+  //（自动工单可能关联多条，只回写单条会让其余上报永远卡在 processing）
+  if (parsed.status === 'resolved' || parsed.status === 'closed') {
+    await env.DB.prepare('UPDATE reports SET status = ? WHERE work_order_id = ?')
+      .bind(parsed.status, id).run();
   }
 
   return Response.json({ ok: true, data: { message: '工单已更新' } });
-}
+}, { roles: ['super_admin', 'admin'] });
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
-  const { id } = await params;
+export const GET = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const order = await getWorkOrder(env.DB, id);
   if (!order) return Response.json({ ok: false, error: '工单不存在' }, { status: 404 });
   return Response.json({ ok: true, data: order });
-}
+});
