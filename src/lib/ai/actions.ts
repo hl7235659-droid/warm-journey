@@ -94,17 +94,33 @@ export function extractAction(text: string): { text: string; action?: AiAction }
       break;
     }
   }
-  // 2) 兜底：文末裸 JSON 对象（模型偶发漏围栏）
+  // 2) 兜底：正文裸 JSON 对象（模型偶发漏围栏）。不做"从首个 { 吞到串尾"的贪婪匹配——
+  //    正文若含其他花括号，贪婪候选必解析失败，action 会静默丢失（L5）。改为就近平衡配对：
+  //    从串尾最后一个 } 回溯找配对的 {，仅对这一小段做解析；围栏分支已覆盖多数场景，此处
+  //    只求不再误吞正文。花括号若出现在 JSON 字符串值里可能配对到更早的 {，解析失败则维持
+  //    无 action，不劣于旧行为。
   if (!action) {
-    const tailRe = /\{[\s\S]*"action"[\s\S]*\}\s*$/;
-    const tail = text.match(tailRe);
-    if (tail) {
-      const start = tail.index ?? -1;
-      const candidate = text.slice(start).trim();
-      const parsed = tryParseActionCandidate(candidate);
-      if (parsed) {
-        action = parsed;
-        cleaned = cleaned.slice(0, start);
+    const end = text.lastIndexOf('}');
+    if (end !== -1) {
+      let depth = 0;
+      let start = -1;
+      for (let i = end; i >= 0; i--) {
+        const ch = text[i];
+        if (ch === '}') depth += 1;
+        else if (ch === '{') {
+          depth -= 1;
+          if (depth === 0) { start = i; break; }
+        }
+      }
+      if (start !== -1) {
+        const candidate = text.slice(start, end + 1);
+        if (candidate.includes('"action"') || candidate.includes("'action'")) {
+          const parsed = tryParseActionCandidate(candidate);
+          if (parsed) {
+            action = parsed;
+            cleaned = cleaned.slice(0, start) + cleaned.slice(end + 1);
+          }
+        }
       }
     }
   }
