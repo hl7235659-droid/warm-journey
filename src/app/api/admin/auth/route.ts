@@ -10,6 +10,16 @@ const LoginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+// 会话 cookie 一处生成，登录与注销共用同一串属性：
+// Secure 防明文泄露；__Host- 前缀让浏览器强制 Secure + Path=/ + 无 Domain，
+// 顺带堵死子域投毒同名 cookie。本地 http dev 会拒收该前缀，所以按协议回落普通名，
+// 读取侧见 src/lib/auth.ts getTokenFromRequest（两个名字都认）。
+function sessionCookie(req: Request, value: string, maxAge: number) {
+  const secure = new URL(req.url).protocol === 'https:';
+  const name = secure ? '__Host-wj_admin' : 'wj_admin';
+  return `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Strict; Max-Age=${maxAge}`;
+}
+
 export async function POST(req: Request) {
   const { env } = getCloudflareContext();
 
@@ -20,8 +30,10 @@ export async function POST(req: Request) {
       return jsonErr('尝试过于频繁，请稍后再试', 429);
     }
   } catch (e) {
-    // D1 抖动时放行：限流器故障不应把全体管理员锁在门外
+    // fail-closed：checkRateLimit 与下一步的 getAdminByUsername 用的是同一个 D1，
+    // D1 挂了登录本来就完不成，放行换来的只是无节流爆破窗口，不换来任何可用性。
     console.error('login rate limit unavailable:', (e as { message?: string })?.message ?? 'unknown');
+    return jsonErr('登录服务暂时不可用，请稍后再试', 503);
   }
 
   const parsed = await readJson(req, LoginSchema);
@@ -46,10 +58,7 @@ export async function POST(req: Request) {
     env,
   );
 
-  // HTTPS 站点必须带 Secure：防止 Cookie 经明文 HTTP 泄露
-  const isHttps = new URL(req.url).protocol === 'https:';
-  const cookieAttrs = `wj_admin=${token}; Path=/; HttpOnly;${isHttps ? ' Secure;' : ''} SameSite=Strict; Max-Age=28800`;
-
+  // 登录态 cookie 一条串由 sessionCookie() 统一生成，登录与注销两处属性必须一致
   return new Response(JSON.stringify({ ok: true, data: { token, user: {
     id: user.id, username: user.username, role: user.role, display_name: user.display_name,
   } } }), {
@@ -57,17 +66,17 @@ export async function POST(req: Request) {
     headers: {
       'Content-Type': 'application/json',
       // HttpOnly cookie so the browser sends it automatically
-      'Set-Cookie': cookieAttrs,
+      'Set-Cookie': sessionCookie(req, token, 28800),
     },
   });
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Set-Cookie': 'wj_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+      'Set-Cookie': sessionCookie(req, '', 0),
     },
   });
 }

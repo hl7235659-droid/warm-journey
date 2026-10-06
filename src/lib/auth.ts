@@ -44,7 +44,8 @@ function getTokenFromRequest(req: Request): string | null {
   const auth = req.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
   const cookie = req.headers.get('cookie') ?? '';
-  const match = cookie.match(/(?:^|;\s*)wj_admin=([^;]+)/);
+  // __Host- 前缀版见 src/app/api/admin/auth/route.ts 的 sessionCookie()，两名都认（前缀版排在前，优先取）
+  const match = cookie.match(/(?:^|;\s*)(?:__Host-)?wj_admin=([^;]+)/);
   return match ? match[1] : null;
 }
 
