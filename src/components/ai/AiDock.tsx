@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import type { AiAction, ChatMessage, ChatSession, ProviderStore } from '@/lib/ai/types';
+import type { AiAction, AiServerStatus, ChatMessage, ChatSession, ProviderStore } from '@/lib/ai/types';
 import { HISTORY_WINDOW } from '@/lib/ai/types';
 import {
   loadProviders, saveProviders, activeProvider, loadSessions, saveSessions,
@@ -11,6 +11,7 @@ import {
 import { getContext } from './ai-context';
 import { executeAction, fetchKnowledgeFor } from './action-executor';
 import { pickGreeting } from '@/lib/ai/persona';
+import { api } from '@/lib/api-client';
 import ChatPanel from './ChatPanel';
 import ProviderDrawer from './ProviderDrawer';
 import SessionDrawer from './SessionDrawer';
@@ -35,8 +36,21 @@ export default function AiDock() {
   const [sending, setSending] = useState(false);
   const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
   const [greeting, setGreeting] = useState<string | null>(null);
+  const [server, setServer] = useState<AiServerStatus | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX?: number; lastY?: number } | null>(null);
+  const serverQueriedRef = useRef(false);
+
+  // 徽章得知道服务器端有没有兜底提供商，否则"本机没填 Key"和"整站没接大模型"
+  // 会显示成同一句「未配置」。只读环境变量、不查库不出站，故面板首次打开时查一次即可。
+  useEffect(() => {
+    if (!open || serverQueriedRef.current) return;
+    serverQueriedRef.current = true;
+    void api<AiServerStatus>('/api/ai/status').then((j) => {
+      if (j.ok && j.data) setServer(j.data);
+      else serverQueriedRef.current = false; // 失败放行下次重试
+    });
+  }, [open]);
 
   // 桌宠式问候：页面打开 1.2s 后弹出，14s 自动收起；打开面板即隐藏
   useEffect(() => {
@@ -231,6 +245,30 @@ export default function AiDock() {
   const session = sessions.find((s) => s.id === activeId) ?? null;
   const provider = activeProvider(providerStore);
 
+  // 徽章三态优先级：本机自带 Key > 服务端兜底 > 真离线。把后两者都写成「未配置」
+  // 正是线上小暖明明该走远端模型却被看成没配置的成因。
+  // 服务端那一档只说"已就绪"，不点名用的是哪家模型（/api/ai/status 也只做布尔值）。
+  const byok = provider && provider.apiKey ? provider : null;
+  const serverReady = server?.ready === true;
+  const badgeText = byok
+    ? byok.name
+    : server === null
+      ? '检查中…'
+      : serverReady
+        ? '服务端已就绪'
+        : '离线模式';
+  const badgeOn = Boolean(byok) || serverReady;
+  const badgeTitle = byok
+    ? 'AI 提供商设置（当前使用本机自带 Key）'
+    : serverReady
+      ? '服务器端已配置模型兜底 · 点此可改用自己携带的 Key'
+      : '本站未配置服务器端模型 · 小暖走本地知识库回答，点此可自带 Key 接大模型';
+  const emptyHint = byok || server === null
+    ? null
+    : serverReady
+      ? '服务器端已配置模型，不用自带 Key，直接问就行'
+      : '当前为离线模式 · 点顶栏「离线模式」添加 AI 提供商可获得完整能力';
+
   // ---------- 面板拖拽（仅桌面端，顶栏为手柄） ----------
   // 拖拽过程中直接写 transform（不经过 setState），pointerup 才提交位置，
   // 避免每帧触发含 Markdown 列表的整体重渲染。
@@ -320,12 +358,12 @@ export default function AiDock() {
           >
             <button
               type="button"
-              className={`aidock-provider${provider && provider.apiKey ? ' is-on' : ''}`}
+              className={`aidock-provider${badgeOn ? ' is-on' : ''}`}
               onClick={() => setDrawer('providers')}
-              title="AI 提供商设置"
+              title={badgeTitle}
             >
               <span className="aidock-dot" aria-hidden="true" />
-              {provider ? provider.name : '未配置'}
+              {badgeText}
             </button>
             <div className="aidock-head-title">
               <div className="aidock-title">小暖</div>
@@ -353,7 +391,7 @@ export default function AiDock() {
           <ChatPanel
             messages={session?.messages ?? []}
             sending={sending}
-            hasProvider={Boolean(provider && provider.apiKey)}
+            emptyHint={emptyHint}
             sessionPointId={session?.pointId}
             chips={session?.pointId ? POINT_CHIPS : DEFAULT_CHIPS}
             onSend={handleSend}
@@ -363,6 +401,7 @@ export default function AiDock() {
           {drawer === 'providers' && (
             <ProviderDrawer
               store={providerStore}
+              server={server}
               onChange={(next) => { setProviderStore(next); saveProviders(next); }}
               onClose={() => setDrawer('none')}
             />

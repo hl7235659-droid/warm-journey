@@ -25,7 +25,7 @@ const BLOCKED_HOST = [
 
 // 受信任的 OpenAI 兼容出站主机名：本站是公网可访问的转发点，
 // 若允许任意 baseUrl，任何人可拿本站当跳板打第三方端点。
-// 需要接入自建/中转域名时，用 Pages 环境变量 AI_ALLOWED_HOSTS="a.com,b.com" 追加。
+// 需要接入自建/中转域名时，用 Worker 环境变量 AI_ALLOWED_HOSTS="a.com,b.com" 追加。
 const TRUSTED_HOSTS = new Set([
   'api.openai.com',
   'api.deepseek.com',
@@ -82,4 +82,23 @@ export function validateBaseUrl(raw: string, extraHostsCsv?: string): BaseUrlRes
 // OpenAI 兼容 chat/completions 地址
 export function chatCompletionsUrl(baseUrl: string): string {
   return `${baseUrl}/chat/completions`;
+}
+
+export interface ServerAiEnv {
+  AI_BASE_URL?: string;
+  AI_API_KEY?: string;
+  AI_MODEL?: string;
+  AI_ALLOWED_HOSTS?: string;
+}
+
+// 服务端兜底提供商（AI_* 三件套）。判据里带上 validateBaseUrl 是刻意的：
+// 只看"三个变量都非空"会让徽章声称"已配置"，而 /api/ai/chat 实际因地址不合法
+// 静默走本地降级——两处必须是同一份判据，徽章才不会撒谎。
+// 返回 null 的三种情形：变量没配齐 / 地址不是 https / 域名不在白名单。
+// 调用方只许把"可用/不可用"透出到界面，baseUrl 与 model 属服务器实现细节，不外泄。
+export function resolveServerProvider(env: ServerAiEnv): { baseUrl: string; apiKey: string; model: string } | null {
+  if (!env.AI_BASE_URL || !env.AI_API_KEY || !env.AI_MODEL) return null;
+  const v = validateBaseUrl(env.AI_BASE_URL, env.AI_ALLOWED_HOSTS);
+  if (!v.ok) return null;
+  return { baseUrl: v.url, apiKey: env.AI_API_KEY, model: env.AI_MODEL };
 }

@@ -7,7 +7,8 @@ import ActionCard from './ActionCard';
 interface ChatPanelProps {
   messages: ChatMessage[];
   sending: boolean;
-  hasProvider: boolean;
+  // 空态提示文案；null 表示不提示（本机已自带 Key，或服务端状态还没查到）
+  emptyHint: string | null;
   sessionPointId?: string;
   chips: string[];
   onSend: (text: string) => void;
@@ -56,7 +57,7 @@ function MarkdownLite({ text }: { text: string }) {
   return <div className="aidock-md">{blocks}</div>;
 }
 
-export default function ChatPanel({ messages, sending, hasProvider, sessionPointId, chips, onSend, onExecuteAction }: ChatPanelProps) {
+export default function ChatPanel({ messages, sending, emptyHint, sessionPointId, chips, onSend, onExecuteAction }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -88,8 +89,8 @@ export default function ChatPanel({ messages, sending, hasProvider, sessionPoint
             <p className="aidock-empty-sub">
               {sessionPointId ? '正在为你关注这个站点，可以直接问它的情况。' : '找驿站、查在店人数、预约进店、解答平台问题，都可以问我。'}
             </p>
-            {!hasProvider && (
-              <p className="aidock-empty-hint">当前为离线模式 · 点顶栏「未配置」添加 AI 提供商可获得完整能力</p>
+            {emptyHint && (
+              <p className="aidock-empty-hint">{emptyHint}</p>
             )}
             <div className="aidock-chips">
               {chips.map((c) => (

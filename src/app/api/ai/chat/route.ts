@@ -8,7 +8,7 @@ import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
 import { normalizeMessages, MAX_MESSAGE_CHARS } from '@/lib/ai/truncate';
 import { extractAction, IdSchema } from '@/lib/ai/actions';
 import { localFallback } from '@/lib/ai/fallback';
-import { validateBaseUrl, chatCompletionsUrl } from '@/lib/ai/fetch';
+import { validateBaseUrl, chatCompletionsUrl, resolveServerProvider } from '@/lib/ai/fetch';
 import { requireAdmin } from '@/lib/auth';
 import { getClientIp, jsonErr } from '@/lib/http';
 import { STATUS_LABELS } from '@/lib/types';
@@ -186,12 +186,12 @@ export async function POST(req: Request) {
     apiKey = input.provider.apiKey;
     model = input.provider.model;
     temperature = input.provider.temperature ?? 0.3;
-  } else if (env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL) {
-    const v = validateBaseUrl(env.AI_BASE_URL, env.AI_ALLOWED_HOSTS);
-    if (v.ok) {
-      baseUrl = v.url;
-      apiKey = env.AI_API_KEY;
-      model = env.AI_MODEL;
+  } else {
+    const server = resolveServerProvider(env);
+    if (server) {
+      baseUrl = server.baseUrl;
+      apiKey = server.apiKey;
+      model = server.model;
       usesServerKey = true;
     }
   }
@@ -251,7 +251,8 @@ export async function POST(req: Request) {
     const { text, action } = extractAction(rawText);
     const safeAction = await validateAction(env.DB, action);
 
-    const body: ChatResponse = { ok: true, mode: 'remote', text, action: safeAction, model };
+    // model 不进响应体：服务端兜底用的是哪家模型属实现细节，BYOK 的用户本来就知道自己填了什么
+    const body: ChatResponse = { ok: true, mode: 'remote', text, action: safeAction };
     return Response.json(body);
   } catch (e) {
     const err = e as { name?: string; message?: string };

@@ -2,11 +2,14 @@
 // AI 提供商管理抽屉：增删改查/设为当前/连通性测试（配置仅存本机 localStorage）
 import { useState } from 'react';
 import { genLocalId } from './ai-store';
-import type { AiProvider, ProviderStore } from '@/lib/ai/types';
+import type { AiProvider, AiServerStatus, ProviderStore } from '@/lib/ai/types';
 import type { ApiResponse } from '@/lib/types';
 
 interface Props {
   store: ProviderStore;
+  // 服务器兜底状态：抽屉里要说清"你一个 Key 都不填时小暖靠什么回答"，
+  // 否则用户看到「离线模式」以外的徽章也无从校验自己是否真的绕开了兜底额度。
+  server: AiServerStatus | null;
   onChange: (store: ProviderStore) => void;
   onClose: () => void;
 }
@@ -35,7 +38,7 @@ function hostOf(baseUrl: string): string {
   }
 }
 
-export default function ProviderDrawer({ store, onChange, onClose }: Props) {
+export default function ProviderDrawer({ store, server, onChange, onClose }: Props) {
   const [editing, setEditing] = useState<Editing>('none');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
@@ -176,6 +179,13 @@ export default function ProviderDrawer({ store, onChange, onClose }: Props) {
       <div className="aidock-drawer-body">
         <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           提供商地址与模型名保存在你的设备，API Key 只保存在本次会话（关闭标签页即清除，需重新填写）。接口须在受信任的 OpenAI 兼容域名列表内，如 https://api.deepseek.com/v1
+        </p>
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: server?.ready ? 'var(--jade)' : 'var(--text-muted)', lineHeight: 1.5 }}>
+          {server === null
+            ? '服务器兜底状态：查询中…'
+            : server.ready
+              ? '服务器兜底：已启用 — 你不在这里配置也能正常对话，自带 Key 时优先烧你自己的额度'
+              : '服务器兜底：未启用 — 不在这里配置 Key 时，小暖只用本地知识库和站点实时数据回答'}
         </p>
         <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: 'var(--gold-600, #b8860b)', lineHeight: 1.5 }}>
           ⚠ 仅支持 https:// 且域名在白名单内的接口（自建/中转域名需由站点管理员通过 AI_ALLOWED_HOSTS 追加）。请勿在公用设备上配置 Key。

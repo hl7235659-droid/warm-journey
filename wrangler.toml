@@ -17,6 +17,14 @@ routes = [
 [triggers]
 crons = ["0 3 * * *"]
 
+# 小暖的服务端兜底提供商：AI_BASE_URL / AI_API_KEY / AI_MODEL 三件套缺任何一件，
+# /api/ai/chat 就只会走本地降级回答，悬浮窗徽章显示「离线模式」（判据见 resolveServerProvider）。
+# 批次 9 从 Pages 迁 Workers 时这三个变量没跟过来，线上静默退化了一次，所以非敏感的两项
+# 直接写进配置随部署走，密钥仍走 secret：npx wrangler secret put AI_API_KEY
+[vars]
+AI_BASE_URL = "https://api.deepseek.com/v1"
+AI_MODEL = "deepseek-chat"
+
 # Workers 静态资产（OpenNext 构建产物）
 [assets]
 directory = ".open-next/assets"

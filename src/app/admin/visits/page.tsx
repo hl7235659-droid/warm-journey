@@ -61,7 +61,7 @@ export default function AdminVisitsPage() {
   }
 
   // T3：AI 周报——聚合近 7 天离店反馈（supports 分布 + 建议原文）→ /api/ai/chat
-  // 提供商走服务端 Pages 环境变量 AI_*（audience=admin 需管理员登录）；
+  // 提供商走服务端 Worker 环境变量 AI_*（audience=admin 需管理员登录）；
   // 管理端不读取 C 端悬浮窗的本地 provider 配置（避免跨端借用用户个人 Key）。
   async function generateReport() {
     setReportLoading(true);

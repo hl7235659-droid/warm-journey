@@ -87,6 +87,13 @@ export interface AiContext {
   nearby?: NearbyPointInfo[];  // 最近 3 个开放站点（无定位时为空）
 }
 
+// ---------- 服务端兜底提供商状态（GET /api/ai/status） ----------
+// 徽章要区分"本机没配 Key"和"整站没接大模型"：前者仍可用（走服务端兜底），
+// 后者才是真离线。只有这一个布尔值——用的哪家模型属服务器实现细节，不下发。
+export interface AiServerStatus {
+  ready: boolean;
+}
+
 // ---------- 聊天 API 契约（/api/ai/chat） ----------
 // 请求体的形状由 chat/route.ts 的 BodySchema（zod）单点定义，客户端 AiDock 按它拼 body；
 // 这里只声明响应——曾经的 ChatRequest/ChatProviderConfig 两份手抄契约零引用，已删。
@@ -95,6 +102,5 @@ export interface ChatResponse {
   mode: 'remote' | 'local';
   text: string;
   action?: AiAction;
-  model?: string;
   error?: string;
 }

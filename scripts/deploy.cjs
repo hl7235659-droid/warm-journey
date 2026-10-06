@@ -62,6 +62,19 @@ function preflight() {
     process.exit(1);
   }
   console.log('  ✓ JWT_SECRET 已配置');
+
+  // 只警告、不拦：BYOK 部署（用户自带 Key、服务器不留兜底）是合法形态。
+  // 加这一条是因为批次 9 从 Pages 迁 Workers 时 AI_* 三个变量没跟过来，
+  // 线上小暖静默退化成本地回答，而界面上一切正常——这类漏配只有部署时才看得见。
+  console.log('→ 提示：AI 兜底提供商（AI_API_KEY / AI_BASE_URL / AI_MODEL）');
+  if (!/\bAI_API_KEY\b/.test(text)) {
+    console.log('  ! Worker secret 里没有 AI_API_KEY。届时小暖只在本机配了 Key（BYOK）时才走大模型，');
+    console.log('    否则悬浮窗徽章显示「离线模式」并回落到本地知识库回答。');
+    console.log('    要让全站默认走模型：npx wrangler secret put AI_API_KEY');
+    console.log('                        并在 wrangler.toml 的 [vars] 里配 AI_BASE_URL / AI_MODEL。');
+  } else {
+    console.log('  ✓ AI_API_KEY 已在 secret 列表中（AI_BASE_URL / AI_MODEL 请在 [vars] 或 Dashboard 核对）');
+  }
   console.log('✓ 预检通过');
 }
 
