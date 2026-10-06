@@ -39,7 +39,7 @@ export interface ServicePoint {
   verified_at: number | null;
   created_at: number;
   updated_at: number;
-  created_by: string | null;
+  // 本接口描述的是"下发形状"：created_by（建点管理员 id）只留在 DB 里做审计，不下发。
 }
 
 export interface AdmissionInfo {

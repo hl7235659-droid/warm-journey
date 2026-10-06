@@ -71,9 +71,10 @@ export async function getPoint(db: D1Database, id: string) {
   return row ? deserializePoint(row) : null;
 }
 
+// created_by 是写路径独有的字段（管理员 id，供 DB 侧审计），不出现在读出来的 ServicePoint 上
 export async function createPoint(
   db: D1Database,
-  data: Omit<ServicePoint, 'id' | 'created_at' | 'updated_at'>,
+  data: Omit<ServicePoint, 'id' | 'created_at' | 'updated_at'> & { created_by?: string | null },
 ) {
   const now = unixNow();
   const result = await db.prepare(
@@ -429,10 +430,12 @@ export interface City {
   enabled: number; created_at: number;
 }
 
+// 公网城市筛选器只要 id + name（首页 chip）；center_lat/lng 与 enabled 属管理端字段，
+// 走 /api/admin/cities 的 listCities，不从公开接口整行下发。
 export async function listEnabledCities(db: D1Database) {
   const rows = await db.prepare(
-    'SELECT * FROM cities WHERE enabled = 1 ORDER BY created_at',
-  ).all<City>();
+    'SELECT id, name FROM cities WHERE enabled = 1 ORDER BY created_at',
+  ).all<Pick<City, 'id' | 'name'>>();
   return rows.results ?? [];
 }
 
@@ -1263,8 +1266,24 @@ function parseJsonObject<T>(raw: string | null | undefined, ctx: string): T {
 }
 
 function deserializePoint(r: RawPoint): ServicePoint {
+  // 显式挑字段而不是 `...r`：点位行里留着 created_by 这类管理员侧列，
+  // 原样展开等于每页公开列表都下发一次管理员用户 id（P3-29）。
+  // 从此新增列默认不下发，要下发必须在这里登记一次。
   return {
-    ...r,
+    id: r.id,
+    name: r.name,
+    address: r.address,
+    lat: r.lat,
+    lng: r.lng,
+    city: r.city,
+    district: r.district,
+    contact_phone: r.contact_phone,
+    open_hours: r.open_hours,
+    status: r.status,
+    notes: r.notes,
+    verified_at: r.verified_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
     services: parseJsonArray(r.services, 'service_points.services'),
     admission: parseJsonObject<ServicePoint['admission']>(r.admission, 'service_points.admission'),
   };
