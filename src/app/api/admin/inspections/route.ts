@@ -11,7 +11,7 @@ export const GET = withAdmin(async ({ req, env }) => {
   return Response.json({ ok: true, data: result });
 });
 
-const CreateSchema = z.object({
+const CreateInspectionSchema = z.object({
   point_id:   z.string().min(1),
   result:     z.enum(['pass', 'fail', 'partial']),
   images:     z.array(z.string().regex(IMAGE_KEY_RE, '无效的图片 key')).max(8).default([]),
@@ -20,7 +20,7 @@ const CreateSchema = z.object({
 });
 
 export const POST = withAdmin(async ({ req, env, auth }) => {
-  const parsed = await readJson(req, CreateSchema);
+  const parsed = await readJson(req, CreateInspectionSchema);
   if (isResponse(parsed)) return parsed;
 
   // point_id 必须真实存在，防孤儿巡检记录

@@ -13,7 +13,7 @@ export const GET = withAdmin(async ({ req, env }) => {
   return Response.json({ ok: true, data: result });
 });
 
-const CreateSchema = z.object({
+const CreateWorkOrderSchema = z.object({
   title:       z.string().min(1).max(100),
   description: z.string().default(''),
   point_id:    z.string().nullable().default(null),
@@ -22,7 +22,7 @@ const CreateSchema = z.object({
 });
 
 export const POST = withAdmin(async ({ req, env, auth }) => {
-  const parsed = await readJson(req, CreateSchema);
+  const parsed = await readJson(req, CreateWorkOrderSchema);
   if (isResponse(parsed)) return parsed;
 
   // createWorkOrder 显式生成 TEXT 主键并返回 id（last_row_id 是数字 rowid，与之无关）

@@ -7,14 +7,14 @@ export const GET = withAdmin(async ({ env }) => {
   return Response.json({ ok: true, data: cities });
 });
 
-const CreateSchema = z.object({
+const CreateCitySchema = z.object({
   name: z.string().min(1).max(20),
   center_lat: z.number().min(-90).max(90),
   center_lng: z.number().min(-180).max(180),
 });
 
 export const POST = withAdmin(async ({ req, env }) => {
-  const parsed = await readJson(req, CreateSchema);
+  const parsed = await readJson(req, CreateCitySchema);
   if (isResponse(parsed)) return parsed;
 
   try {
