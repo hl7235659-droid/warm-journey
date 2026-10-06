@@ -896,8 +896,11 @@ export async function listKnowledge(
   if (category) { wheres.push('category = ?'); bindings.push(category); }
   if (enabled !== undefined) { wheres.push('enabled = ?'); bindings.push(enabled ? 1 : 0); }
   if (q) {
-    wheres.push('(title LIKE ? OR content LIKE ? OR tags LIKE ?)');
-    bindings.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    const qq = likeTerm(q);
+    if (qq) {
+      wheres.push('(title LIKE ? OR content LIKE ? OR tags LIKE ?)');
+      bindings.push(`%${qq}%`, `%${qq}%`, `%${qq}%`);
+    }
   }
   const { rows, total } = await paginate<RawKnowledge>(db, {
     select: '*', from: 'FROM ai_knowledge', countFrom: 'FROM ai_knowledge',
