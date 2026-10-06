@@ -5,10 +5,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { DB_NAME, PAGES_PROJECT, REQUIRED_COLUMNS, REQUIRED_TABLES } = require('./db-objects.cjs');
 
 const branch = process.env.DEPLOY_BRANCH || 'main';
-const project = process.env.PAGES_PROJECT || 'warm-journey';
-const db = 'warm-journey-db';
+const project = PAGES_PROJECT;
+const db = DB_NAME;
 
 function runWrangler(args, { encoding = 'utf8' } = {}) {
   return spawnSync('npx', args, { encoding, shell: process.platform === 'win32', stdio: encoding ? 'pipe' : 'inherit' });
@@ -24,12 +25,8 @@ function remoteSql(sql) {
 
 function preflight() {
   console.log('→ 预检 1/2：远程 D1 是否已具备代码硬依赖的列与表');
-  const probes = [
-    ['visits.checkin_code', "SELECT checkin_code FROM visits LIMIT 0;"],
-    ['visits.created_ip', "SELECT created_ip FROM visits LIMIT 0;"],
-    ['reports.query_code', "SELECT query_code FROM reports LIMIT 0;"],
-    ['uploads 台账表', "SELECT key, ip FROM uploads LIMIT 0;"],
-  ];
+  // 清单与 scripts/migrate.cjs 同源（db-objects.cjs），不再各抄一份
+  const probes = [...REQUIRED_COLUMNS.map(c => [c[0], c[1]]), ...REQUIRED_TABLES];
   const missing = [];
   for (const [label, sql] of probes) {
     const { ok } = remoteSql(sql);
