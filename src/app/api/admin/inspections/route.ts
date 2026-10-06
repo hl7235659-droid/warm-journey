@@ -1,6 +1,7 @@
 import { listInspections, createInspection, getPoint } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, pageParams } from '@/lib/http';
 import { ADMIN_ROLES } from '@/lib/types';
+import { IMAGE_KEY_RE } from '@/lib/upload';
 import { z } from 'zod';
 
 export const GET = withAdmin(async ({ req, env }) => {
@@ -13,7 +14,7 @@ export const GET = withAdmin(async ({ req, env }) => {
 const CreateSchema = z.object({
   point_id:   z.string().min(1),
   result:     z.enum(['pass', 'fail', 'partial']),
-  images:     z.array(z.string().max(120)).max(8).default([]),
+  images:     z.array(z.string().regex(IMAGE_KEY_RE, '无效的图片 key')).max(8).default([]),
   notes:      z.string().max(2000).default(''),
   inspected_at: z.number().optional(),
 });

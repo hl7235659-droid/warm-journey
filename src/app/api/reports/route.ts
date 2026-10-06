@@ -2,6 +2,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { createReport, getPoint, maybeAutoCreateWorkOrder, checkRateLimit, filterOwnedUploads } from '@/lib/db';
 import { readJson, isResponse, getClientIp } from '@/lib/http';
 import { REPORT_CATEGORIES } from '@/lib/types';
+import { IMAGE_KEY_RE } from '@/lib/upload';
 import { z } from 'zod';
 
 const ReportSchema = z.object({
@@ -9,7 +10,7 @@ const ReportSchema = z.object({
   category: z.enum(REPORT_CATEGORIES),
   content:  z.string().min(5).max(500),
   // 只允许 /api/upload 签发的 key
-  images:   z.array(z.string().regex(/^img\/\d{4}-\d{2}\/[0-9a-f]{16}\.(jpg|png|webp|gif)$/)).max(3).default([]),
+  images:   z.array(z.string().regex(IMAGE_KEY_RE, '无效的图片 key')).max(3).default([]),
 });
 
 export async function POST(req: Request) {
