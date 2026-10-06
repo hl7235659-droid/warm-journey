@@ -53,7 +53,7 @@ export function buildMessages(input: PromptInput): WireMessage[] {
 
   // dataText 会作为「以此为准」的高权重段落注入，只允许管理端（已过管理员鉴权）使用
   if (isAdmin && input.dataText) {
-    parts.push(section('统计数据（周报以此为准，禁止编造）', input.dataText));
+    parts.push(section('统计数据（唯一事实来源：标签名称与次数必须逐字引用，禁止改写或补充）', input.dataText));
   }
 
   if (!isAdmin && input.siteHelp.length > 0) {
