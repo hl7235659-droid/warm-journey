@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useAdmin, useIsSuperAdmin } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
+import { ModalForm, useAdminForm } from '@/components/admin/modal-form';
 import type { AdminRole, AdminUser, ApiResponse } from '@/lib/types';
 import { ADMIN_ROLES, ADMIN_ROLE_LABELS, ADMIN_PASSWORD_RE, ADMIN_PASSWORD_HINT } from '@/lib/types';
 import { api, ACTION_ERR } from '@/lib/api-client';
@@ -15,12 +16,9 @@ export default function AdminUsersPage() {
   const me = useAdmin();
   const isSuper = useIsSuperAdmin();
   const [forbidden, setForbidden] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(BLANK());
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
   const [resetUser, setResetUser] = useState<AdminUser | null>(null);
   const [resetPwd, setResetPwd] = useState('');
+  const [resetSaving, setResetSaving] = useState(false);
 
   const fetchUsers = useCallback(async (): Promise<ListResp<AdminUser>> => {
     // 403 要渲染"权限不足"专属空态而非报错，故这一处保留裸 fetch 读 HTTP 状态码
@@ -33,24 +31,13 @@ export default function AdminUsersPage() {
 
   const { items, loading, error, reload } = useAdminList(fetchUsers);
 
-  function closeForm() {
-    setShowForm(false);
-    setForm(BLANK());
-    setFormError('');
-  }
+  const {
+    showForm, saving, formError, form, setForm, openForm, closeForm, submit,
+  } = useAdminForm('/api/admin/users', { blank: BLANK, onSaved: reload, errorFallback: '创建失败' });
 
-  async function submit(e: React.FormEvent) {
+  async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setFormError('');
-    const j = await api('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    setSaving(false);
-    if (j.ok) { closeForm(); reload(); }
-    else setFormError(j.error ?? '创建失败');
+    await submit(form);
   }
 
   // 重置密码用 type=password 的弹窗（window.prompt 明文可见，且无法粘贴密码管理器的强密码）
@@ -58,13 +45,13 @@ export default function AdminUsersPage() {
     e.preventDefault();
     if (!resetUser) return;
     if (!ADMIN_PASSWORD_RE.test(resetPwd)) { alert(`密码${ADMIN_PASSWORD_HINT}`); return; }
-    setSaving(true);
+    setResetSaving(true);
     const j = await api(`/api/admin/users/${resetUser.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: resetPwd }),
     });
-    setSaving(false);
+    setResetSaving(false);
     if (j.ok) { setResetUser(null); setResetPwd(''); alert('密码已重置'); }
     else alert(j.error ?? ACTION_ERR);
   }
@@ -102,7 +89,7 @@ export default function AdminUsersPage() {
       )}
       <div className="page-head">
         <h1 className="page-title">账号管理</h1>
-        {isSuper && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 新建账号</button>}
+        {isSuper && <button className="btn btn-primary btn-sm" onClick={() => openForm()}>+ 新建账号</button>}
       </div>
 
       {error && <p className="field-error form-error">{error}</p>}
@@ -150,64 +137,43 @@ export default function AdminUsersPage() {
       </div>
 
       {showForm && (
-        <div className="modal-backdrop" onClick={closeForm}>
-          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">新建账号</h2>
-            <form onSubmit={submit} noValidate>
-              <div className="field">
-                <label htmlFor="u-name">用户名 *</label>
-                <input id="u-name" className="input" value={form.username}
-                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  placeholder="字母、数字、下划线" required />
-              </div>
-              <div className="field">
-                <label htmlFor="u-pwd">初始密码 *（{ADMIN_PASSWORD_HINT}）</label>
-                <input id="u-pwd" className="input" type="password" value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required />
-              </div>
-              <div className="field">
-                <label htmlFor="u-display">显示名</label>
-                <input id="u-display" className="input" value={form.display_name}
-                  onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))} placeholder="可选" />
-              </div>
-              <div className="field-lg">
-                <label htmlFor="u-role">角色</label>
-                <select id="u-role" className="select" value={form.role}
-                  onChange={e => setForm(f => ({ ...f, role: e.target.value as AdminRole }))}>
-                  {ADMIN_ROLES.map(r => <option key={r} value={r}>{ADMIN_ROLE_LABELS[r]}</option>)}
-                </select>
-              </div>
-              {formError && <p className="field-error form-error" role="alert">⚠ {formError}</p>}
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={closeForm}>取消</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? '创建中…' : '创建'}
-                </button>
-              </div>
-            </form>
+        <ModalForm title="新建账号" onClose={closeForm} onSubmit={submitCreate}
+          saving={saving} error={formError} submitLabel="创建" savingLabel="创建中…">
+          <div className="field">
+            <label htmlFor="u-name">用户名 *</label>
+            <input id="u-name" className="input" value={form.username}
+              onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+              placeholder="字母、数字、下划线" required />
           </div>
-        </div>
+          <div className="field">
+            <label htmlFor="u-pwd">初始密码 *（{ADMIN_PASSWORD_HINT}）</label>
+            <input id="u-pwd" className="input" type="password" value={form.password}
+              onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required />
+          </div>
+          <div className="field">
+            <label htmlFor="u-display">显示名</label>
+            <input id="u-display" className="input" value={form.display_name}
+              onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))} placeholder="可选" />
+          </div>
+          <div className="field-lg">
+            <label htmlFor="u-role">角色</label>
+            <select id="u-role" className="select" value={form.role}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value as AdminRole }))}>
+              {ADMIN_ROLES.map(r => <option key={r} value={r}>{ADMIN_ROLE_LABELS[r]}</option>)}
+            </select>
+          </div>
+        </ModalForm>
       )}
 
       {resetUser && (
-        <div className="modal-backdrop" onClick={() => setResetUser(null)}>
-          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">为 {resetUser.username} 设置新密码</h2>
-            <form onSubmit={submitReset} noValidate>
-              <div className="field-lg">
-                <label htmlFor="r-pwd">新密码（{ADMIN_PASSWORD_HINT}）</label>
-                <input id="r-pwd" className="input" type="password" autoComplete="new-password"
-                  value={resetPwd} onChange={e => setResetPwd(e.target.value)} required autoFocus />
-              </div>
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={() => setResetUser(null)}>取消</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? '保存中…' : '保存'}
-                </button>
-              </div>
-            </form>
+        <ModalForm title={`为 ${resetUser.username} 设置新密码`} onClose={() => setResetUser(null)}
+          onSubmit={submitReset} saving={resetSaving} submitLabel="保存" savingLabel="保存中…">
+          <div className="field-lg">
+            <label htmlFor="r-pwd">新密码（{ADMIN_PASSWORD_HINT}）</label>
+            <input id="r-pwd" className="input" type="password" autoComplete="new-password"
+              value={resetPwd} onChange={e => setResetPwd(e.target.value)} required autoFocus />
           </div>
-        </div>
+        </ModalForm>
       )}
     </>
   );

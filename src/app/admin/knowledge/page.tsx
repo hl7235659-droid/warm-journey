@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useCanWrite } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
+import { ModalForm, useAdminForm } from '@/components/admin/modal-form';
 import type { AiKnowledge } from '@/lib/db';
 import { api, ACTION_ERR } from '@/lib/api-client';
 import { formatCNDate } from '@/lib/format';
@@ -32,20 +33,14 @@ function parseTags(s: string): string[] {
   return out;
 }
 
-function fmtDate(ts: number) {
-  return formatCNDate(ts);
-}
+const BLANK = () => ({ category: 'faq' as CategoryKey, title: '', content: '', tags: '' });
 
 export default function AdminKnowledgePage() {
   const canWrite = useCanWrite();
   const [category, setCategory] = useState<CategoryKey | ''>('');
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState('');
-  const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AiKnowledge | null>(null);
-  const [form, setForm] = useState({ category: 'faq' as CategoryKey, title: '', content: '', tags: '' });
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
 
   const fetchKnowledge = useCallback(async (page: number): Promise<ListResp<AiKnowledge>> => {
     const p = new URLSearchParams({ page: String(page), page_size: '50' });
@@ -58,45 +53,41 @@ export default function AdminKnowledgePage() {
 
   const { items, total, page, loading, error, reload } = useAdminList(fetchKnowledge);
 
+  const {
+    showForm, saving, formError, setFormError, form, setForm, openForm, closeForm: closeBaseForm, submit,
+  } = useAdminForm('/api/admin/knowledge', {
+    blank: BLANK, onSaved: reload, failureMode: 'both', errorFallback: '保存失败',
+  });
+
   function openCreate() {
     setEditing(null);
-    setFormError('');
-    setForm({ category: category || 'faq', title: '', content: '', tags: '' });
-    setShowForm(true);
+    openForm({ ...BLANK(), category: category || 'faq' });
   }
 
   function openEdit(it: AiKnowledge) {
     setEditing(it);
-    setFormError('');
-    setForm({ category: it.category, title: it.title, content: it.content, tags: it.tags.join(', ') });
-    setShowForm(true);
+    openForm({ category: it.category, title: it.title, content: it.content, tags: it.tags.join(', ') });
   }
 
   function closeForm() {
-    setShowForm(false);
     setEditing(null);
-    setFormError('');
+    closeBaseForm();
   }
 
-  async function submit(e: React.FormEvent) {
+  async function submitForm(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) { setFormError('标题不能为空'); return; }
     if (!form.content.trim()) { setFormError('正文不能为空'); return; }
-    setSaving(true);
-    setFormError('');
-    const j = await api(editing ? `/api/admin/knowledge/${editing.id}` : '/api/admin/knowledge', {
-      method: editing ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const saved = await submit(
+      {
         category: form.category,
         title: form.title.trim(),
         content: form.content.trim(),
         tags: parseTags(form.tags),
-      }),
-    });
-    setSaving(false);
-    if (j.ok) { closeForm(); reload(); }
-    else { const msg = j.error ?? '保存失败'; setFormError(msg); alert(msg); }
+      },
+      editing ? { url: `/api/admin/knowledge/${editing.id}`, method: 'PUT' } : undefined,
+    );
+    if (saved) setEditing(null);
   }
 
   async function toggleEnabled(it: AiKnowledge) {
@@ -190,7 +181,7 @@ export default function AdminKnowledgePage() {
                 <td>
                   <span className={`badge ${it.enabled ? 'badge-green' : 'badge-gray'}`}>{it.enabled ? '启用' : '停用'}</span>
                 </td>
-                <td className="td-time">{fmtDate(it.updated_at)}</td>
+                <td className="td-time">{formatCNDate(it.updated_at)}</td>
                 <td className="td-nowrap">
                   <div className="flow-row" style={{ gap: '0.25rem' }}>
                     {canWrite && (
@@ -213,66 +204,63 @@ export default function AdminKnowledgePage() {
       </p>
 
       {showForm && (
-        <div className="modal-backdrop" onClick={closeForm}>
-          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">{editing ? '编辑知识条目' : '新增知识条目'}</h2>
-            <form onSubmit={submit} noValidate>
-              <div className="field">
-                <label htmlFor="k-category">类别 *</label>
-                <select
-                  id="k-category"
-                  className="select"
-                  value={form.category}
-                  onChange={e => setForm(f => ({ ...f, category: e.target.value as CategoryKey }))}
-                >
-                  {KNOWLEDGE_CATEGORIES.map(k => <option key={k} value={k}>{CATEGORY_LABELS[k]}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="k-title">标题 *（≤60 字）</label>
-                <input
-                  id="k-title"
-                  className="input"
-                  value={form.title}
-                  maxLength={60}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="例：骑手高温补贴申请条件"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="k-content">正文 *（≤2000 字）</label>
-                <textarea
-                  id="k-content"
-                  className="textarea"
-                  value={form.content}
-                  maxLength={2000}
-                  rows={8}
-                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                  placeholder="写清适用对象、条件、流程与注意事项，便于 AI 检索后准确引用。"
-                  required
-                />
-              </div>
-              <div className="field-lg">
-                <label htmlFor="k-tags">标签（逗号分隔，最多 10 个，单个 ≤20 字）</label>
-                <input
-                  id="k-tags"
-                  className="input"
-                  value={form.tags}
-                  onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-                  placeholder="例：高温补贴, 权益政策"
-                />
-              </div>
-              {formError && <p className="field-error form-error" role="alert">⚠ {formError}</p>}
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={closeForm}>取消</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? '保存中…' : editing ? '保存' : '创建'}
-                </button>
-              </div>
-            </form>
+        <ModalForm
+          title={editing ? '编辑知识条目' : '新增知识条目'}
+          wide
+          onClose={closeForm}
+          onSubmit={submitForm}
+          saving={saving}
+          error={formError}
+          submitLabel={editing ? '保存' : '创建'}
+          savingLabel="保存中…"
+        >
+          <div className="field">
+            <label htmlFor="k-category">类别 *</label>
+            <select
+              id="k-category"
+              className="select"
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value as CategoryKey }))}
+            >
+              {KNOWLEDGE_CATEGORIES.map(k => <option key={k} value={k}>{CATEGORY_LABELS[k]}</option>)}
+            </select>
           </div>
-        </div>
+          <div className="field">
+            <label htmlFor="k-title">标题 *（≤60 字）</label>
+            <input
+              id="k-title"
+              className="input"
+              value={form.title}
+              maxLength={60}
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="例：骑手高温补贴申请条件"
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="k-content">正文 *（≤2000 字）</label>
+            <textarea
+              id="k-content"
+              className="textarea"
+              value={form.content}
+              maxLength={2000}
+              rows={8}
+              onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              placeholder="写清适用对象、条件、流程与注意事项，便于 AI 检索后准确引用。"
+              required
+            />
+          </div>
+          <div className="field-lg">
+            <label htmlFor="k-tags">标签（逗号分隔，最多 10 个，单个 ≤20 字）</label>
+            <input
+              id="k-tags"
+              className="input"
+              value={form.tags}
+              onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
+              placeholder="例：高温补贴, 权益政策"
+            />
+          </div>
+        </ModalForm>
       )}
     </>
   );

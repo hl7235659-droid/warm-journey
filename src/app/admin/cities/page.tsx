@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useCanWrite } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
+import { ModalForm, useAdminForm } from '@/components/admin/modal-form';
 import type { City } from '@/lib/db';
 import { api } from '@/lib/api-client';
 
@@ -11,10 +12,6 @@ const BLANK = () => ({ name: '', center_lat: '', center_lng: '' });
 
 export default function AdminCitiesPage() {
   const canWrite = useCanWrite();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(BLANK());
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState('');
 
   const fetchCities = useCallback(async (): Promise<ListResp<City>> => {
     const j = await api<City[]>('/api/admin/cities');
@@ -24,28 +21,17 @@ export default function AdminCitiesPage() {
 
   const { items, loading, error, reload } = useAdminList(fetchCities);
 
-  function closeForm() {
-    setShowForm(false);
-    setForm(BLANK());
-    setFormError('');
-  }
+  const {
+    showForm, saving, formError, form, setForm, openForm, closeForm, submit,
+  } = useAdminForm('/api/admin/cities', { blank: BLANK, onSaved: reload, errorFallback: '创建失败' });
 
-  async function submit(e: React.FormEvent) {
+  async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setFormError('');
-    const j = await api('/api/admin/cities', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name.trim(),
-        center_lat: parseFloat(form.center_lat) || 0,
-        center_lng: parseFloat(form.center_lng) || 0,
-      }),
+    await submit({
+      name: form.name.trim(),
+      center_lat: parseFloat(form.center_lat) || 0,
+      center_lng: parseFloat(form.center_lng) || 0,
     });
-    setSaving(false);
-    if (j.ok) { closeForm(); reload(); }
-    else setFormError(j.error ?? '创建失败');
   }
 
   async function toggleEnabled(c: City) {
@@ -62,7 +48,7 @@ export default function AdminCitiesPage() {
     <>
       <div className="page-head">
         <h1 className="page-title">城市管理</h1>
-        {canWrite && <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ 开通城市</button>}
+        {canWrite && <button className="btn btn-primary btn-sm" onClick={() => openForm()}>+ 开通城市</button>}
       </div>
 
       <p className="hint">已开通城市会出现在 C 端首页的城市筛选中；视野中心用于地图类功能的默认定位。</p>
@@ -101,38 +87,27 @@ export default function AdminCitiesPage() {
       </div>
 
       {showForm && (
-        <div className="modal-backdrop" onClick={closeForm}>
-          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">开通城市</h2>
-            <form onSubmit={submit} noValidate>
-              <div className="field">
-                <label htmlFor="c-name">城市名 *</label>
-                <input id="c-name" className="input" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="例：深圳" required />
-              </div>
-              <div className="field-lg" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
-                <div>
-                  <label htmlFor="c-lat">中心纬度</label>
-                  <input id="c-lat" className="input" type="number" step="0.0001" value={form.center_lat}
-                    onChange={e => setForm(f => ({ ...f, center_lat: e.target.value }))} placeholder="23.1291" />
-                </div>
-                <div>
-                  <label htmlFor="c-lng">中心经度</label>
-                  <input id="c-lng" className="input" type="number" step="0.0001" value={form.center_lng}
-                    onChange={e => setForm(f => ({ ...f, center_lng: e.target.value }))} placeholder="113.2644" />
-                </div>
-              </div>
-              {formError && <p className="field-error form-error" role="alert">⚠ {formError}</p>}
-              <div className="modal-actions">
-                <button type="button" className="btn btn-ghost" onClick={closeForm}>取消</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? '创建中…' : '创建'}
-                </button>
-              </div>
-            </form>
+        <ModalForm title="开通城市" onClose={closeForm} onSubmit={submitCreate}
+          saving={saving} error={formError} submitLabel="创建" savingLabel="创建中…">
+          <div className="field">
+            <label htmlFor="c-name">城市名 *</label>
+            <input id="c-name" className="input" value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="例：深圳" required />
           </div>
-        </div>
+          <div className="field-lg" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+            <div>
+              <label htmlFor="c-lat">中心纬度</label>
+              <input id="c-lat" className="input" type="number" step="0.0001" value={form.center_lat}
+                onChange={e => setForm(f => ({ ...f, center_lat: e.target.value }))} placeholder="23.1291" />
+            </div>
+            <div>
+              <label htmlFor="c-lng">中心经度</label>
+              <input id="c-lng" className="input" type="number" step="0.0001" value={form.center_lng}
+                onChange={e => setForm(f => ({ ...f, center_lng: e.target.value }))} placeholder="113.2644" />
+            </div>
+          </div>
+        </ModalForm>
       )}
     </>
   );
