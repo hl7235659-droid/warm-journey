@@ -38,6 +38,7 @@ export default function AiDock() {
   const [greeting, setGreeting] = useState<string | null>(null);
   const [server, setServer] = useState<AiServerStatus | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
   const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX?: number; lastY?: number } | null>(null);
   const serverQueriedRef = useRef(false);
 
@@ -126,7 +127,10 @@ export default function AiDock() {
   // ---------- 发送链路 ----------
   const handleSend = useCallback(async (text: string) => {
     const content = text.trim();
-    if (!content || sending) return;
+    // 闸门必须同步：按钮的 disabled 与 sending state 都要等一次重渲染才生效，
+    // 极速双击的两次点击会落进同一个 sending=false 的旧闭包连发两条（L4）。
+    // 两次点击分属两个任务，所以任务内置位即可拦掉第二次。
+    if (!content || sendingRef.current) return;
     const sid = ensureSession();
 
     // 历史窗口必须在追加本次提问之前算：commit 之后末位就是刚发的那条，
@@ -143,6 +147,7 @@ export default function AiDock() {
       if (sess && sess.messages.length === 0) base = setSessionTitle(base, sid, content);
       return appendMessage(base, sid, { role: 'user', content, ts: Date.now() });
     });
+    sendingRef.current = true;
     setSending(true);
 
     try {
@@ -176,9 +181,10 @@ export default function AiDock() {
       }
       commit((list) => appendMessage(list, sid, assistant));
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
-  }, [ensureSession, providerStore, sending, commit]);
+  }, [ensureSession, providerStore, commit]);
 
   // ---------- 操作执行 ----------
   const handleExecuteAction = useCallback(async (action: AiAction, msgTs: number) => {
