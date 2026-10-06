@@ -1,3 +1,4 @@
+import { toHex } from '@/lib/bytes';
 import type { ServicePoint } from '@/lib/types';
 
 // DB 层内部工具。刻意不经 index.ts re-export：paginate / genId / parseJson* 不是公共接口。
@@ -11,7 +12,7 @@ export function unixNow() { return Math.floor(Date.now() / 1000); }
 export function genId() {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return toHex(bytes);
 }
 
 // 查询码：10 位 Crockford base32（小写、去除 i/l/o/u 防误读），熵 ≈ 50 bit
@@ -101,14 +102,4 @@ export function deserializePoint(r: RawPoint): ServicePoint {
 // 北京时间（UTC+8）当日 0 点的 unix 秒
 export function shanghaiDayStart(now = unixNow()): number {
   return Math.floor((now + 8 * 3600) / 86400) * 86400 - 8 * 3600;
-}
-
-// haversine（米）——与首页前端同口径
-export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const rad = Math.PI / 180;
-  const dLat = (lat2 - lat1) * rad;
-  const dLng = (lng2 - lng1) * rad;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
 }

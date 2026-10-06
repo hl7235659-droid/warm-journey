@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { VISIT_STATUS_LABELS } from '@/lib/types';
 import type { Visit } from '@/lib/types';
 import { api, ACTION_ERR } from '@/lib/api-client';
+import { formatCNDateTime } from '@/lib/format';
 import type { ApiResponse } from '@/lib/types';
 
 // 入店确认页只读这几个字段；rider_token 由服务端脱敏为「前 6 位 + …」
@@ -81,7 +82,7 @@ export default function CheckinPage() {
               <div className="stack-sm" style={{ fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}>
                 <p style={{ margin: 0 }}><span style={{ color: 'var(--text-muted)' }}>预约编号：</span><span style={{ fontFamily: 'monospace' }}>{visit.id}</span></p>
                 <p style={{ margin: 0 }}><span style={{ color: 'var(--text-muted)' }}>骑手标识：</span>{visit.rider_token}</p>
-                <p style={{ margin: 0 }}><span style={{ color: 'var(--text-muted)' }}>预约时间：</span>{new Date(visit.reserved_at * 1000).toLocaleString('zh-CN')}</p>
+                <p style={{ margin: 0 }}><span style={{ color: 'var(--text-muted)' }}>预约时间：</span>{formatCNDateTime(visit.reserved_at)}</p>
                 <p style={{ margin: 0 }}><span style={{ color: 'var(--text-muted)' }}>当前状态：</span>{VISIT_STATUS_LABELS[visit.status]}</p>
               </div>
             </div>

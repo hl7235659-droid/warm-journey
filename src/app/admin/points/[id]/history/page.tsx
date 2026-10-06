@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { PointHistory } from '@/lib/types';
 import { api } from '@/lib/api-client';
+import { formatCNDateTime } from '@/lib/format';
 
 export default function PointHistoryPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,7 +44,7 @@ export default function PointHistoryPage() {
           <div className="stack">
             {history.map(h => {
               const open = expanded === h.id;
-              const date = new Date(h.changed_at * 1000);
+              const date = formatCNDateTime(h.changed_at);
               return (
                 <div key={h.id} style={{ position: 'relative' }}>
                   {/* Dot */}
@@ -57,7 +58,7 @@ export default function PointHistoryPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
                       <div>
                         <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>
-                          {date.toLocaleString('zh-CN')}
+                          {date}
                         </p>
                         <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           由 {h.changed_by_name ?? h.changed_by ?? '未知操作人'} 更新

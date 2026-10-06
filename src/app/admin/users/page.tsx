@@ -7,6 +7,7 @@ import type { ListResp } from '@/components/admin/list';
 import type { AdminRole, AdminUser, ApiResponse } from '@/lib/types';
 import { ADMIN_ROLES, ADMIN_ROLE_LABELS, ADMIN_PASSWORD_RE, ADMIN_PASSWORD_HINT } from '@/lib/types';
 import { api, ACTION_ERR } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 
 const BLANK = () => ({ username: '', password: '', role: 'inspector' as AdminRole, display_name: '' });
 
@@ -134,7 +135,7 @@ export default function AdminUsersPage() {
                     </select>
                   </td>
                   <td className="td-time">
-                    {u.last_login_at ? new Date(u.last_login_at * 1000).toLocaleDateString('zh-CN') : '从未登录'}
+                    {u.last_login_at ? formatCNDate(u.last_login_at) : '从未登录'}
                   </td>
                   <td className="td-nowrap">
                     <button className="btn btn-ghost btn-sm" onClick={() => { setResetUser(u); setResetPwd(''); }}>重置密码</button>

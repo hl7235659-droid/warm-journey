@@ -2,6 +2,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkRateLimit, recordUpload } from '@/lib/db';
 import { getClientIp, jsonErr } from '@/lib/http';
 import { MAX_UPLOAD_BYTES } from '@/lib/types';
+import { toHex } from '@/lib/bytes';
 
 const EXT_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
 
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  const hex = toHex(bytes);
   const key = `img/${new Date().toISOString().slice(0, 7)}/${hex}.${ext}`;
 
   await env.BUCKET.put(key, file.stream(), {

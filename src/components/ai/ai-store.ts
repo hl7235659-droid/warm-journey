@@ -4,6 +4,7 @@
 // 关掉标签页即消失，避免长期明文驻留在磁盘上被扩展/共用设备读取。
 import type { AiProvider, ProviderStore, ChatMessage, ChatSession } from '@/lib/ai/types';
 import { readItem, writeItem, readSessionItem, writeSessionItem } from '@/lib/local';
+import { toHex } from '@/lib/bytes';
 
 const PROVIDERS_KEY = 'wj_ai_providers';
 const PROVIDER_KEYS = 'wj_ai_provider_keys';   // sessionStorage
@@ -28,7 +29,7 @@ export function genLocalId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return toHex(bytes);
 }
 
 // ---------- Providers ----------

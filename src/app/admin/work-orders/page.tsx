@@ -7,6 +7,7 @@ import type { ListResp } from '@/components/admin/list';
 import type { PagedResult, WorkOrder, WorkOrderStatus } from '@/lib/types';
 import { PRIORITY_LABELS, WORK_ORDER_STATUS_LABELS } from '@/lib/types';
 import { api } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 
 const STATUS_KEYS = Object.keys(WORK_ORDER_STATUS_LABELS) as WorkOrderStatus[];
 const STATUS_BADGE: Record<WorkOrderStatus, string> = {
@@ -81,7 +82,7 @@ export default function AdminWorkOrdersPage() {
                   <td>
                     <span className={`badge ${STATUS_BADGE[w.status]}`}>{WORK_ORDER_STATUS_LABELS[w.status]}</span>
                   </td>
-                  <td className="td-time">{new Date(w.created_at * 1000).toLocaleDateString('zh-CN')}</td>
+                  <td className="td-time">{formatCNDate(w.created_at)}</td>
                   <td>
                     {canWrite && <button className="btn btn-ghost btn-sm" onClick={() => openEdit(w)}>更新</button>}
                   </td>

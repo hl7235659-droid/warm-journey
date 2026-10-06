@@ -9,6 +9,7 @@ import type { PointSignals, Occupancy } from '@/lib/db';
 import { navToPoint } from '@/lib/nav';
 import { getRiderToken } from '@/lib/rider';
 import { api } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 import { LS_KEYS, readItem, writeItem } from '@/lib/local';
 import VisitCard from './VisitCard';
 
@@ -22,7 +23,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusClass = STATUS_SEALS[point.status];
-  const updatedDate = new Date(point.updated_at * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+  const updatedDate = formatCNDate(point.updated_at, { year: 'numeric', month: 'long', day: 'numeric' });
   const cover = POINT_COVERS[point.id] ?? COVER_FALLBACK;
   const isPhoto = POINT_COVERS[point.id] !== undefined;
 
@@ -180,7 +181,7 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
                 <span className="mi-seal" aria-hidden="true"><i>检</i></span>
                 <span style={{ fontSize: '0.9rem', fontFamily: 'var(--font-sans)' }}>
                   最近巡检：{{ pass: '通过', fail: '未通过', partial: '部分通过' }[signals.last_inspection.result] ?? signals.last_inspection.result}
-                  （{new Date(signals.last_inspection.inspected_at * 1000).toLocaleDateString('zh-CN')}）
+                  （{formatCNDate(signals.last_inspection.inspected_at)}）
                 </span>
               </div>
             )}

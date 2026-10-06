@@ -6,6 +6,7 @@ import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
 import type { AiKnowledge } from '@/lib/db';
 import { api, ACTION_ERR } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import type { KnowledgeCategory } from '@/lib/types';
 
@@ -32,7 +33,7 @@ function parseTags(s: string): string[] {
 }
 
 function fmtDate(ts: number) {
-  return new Date(ts * 1000).toLocaleDateString('zh-CN');
+  return formatCNDate(ts);
 }
 
 export default function AdminKnowledgePage() {

@@ -1,6 +1,7 @@
 'use client';
 // 会话列表抽屉：选择 / 重命名 / 删除单个会话，或清空全部
 import type { ChatSession } from '@/lib/ai/types';
+import { formatCNDate } from '@/lib/format';
 
 interface Props {
   sessions: ChatSession[]; // 已按 updatedAt 倒序
@@ -17,7 +18,7 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 // 相对时间交给平台：Intl.RelativeTimeFormat(numeric:'auto') 自带"昨天"这类说法，
-// 超过 7 天仍回到具体日期（与同文件"最近登录"列的 toLocaleDateString 同族）
+// 超过 7 天仍回到具体日期（formatCNDate，与 admin 各列表页时间列同族）
 const RELATIVE = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' });
 
 function relativeTime(ts: number): string {
@@ -26,7 +27,7 @@ function relativeTime(ts: number): string {
   if (diff < HOUR) return RELATIVE.format(-Math.floor(diff / MINUTE), 'minute');
   if (diff < DAY) return RELATIVE.format(-Math.floor(diff / HOUR), 'hour');
   if (diff < 7 * DAY) return RELATIVE.format(-Math.floor(diff / DAY), 'day');
-  return new Date(ts).toLocaleDateString('zh-CN');
+  return formatCNDate(new Date(ts));
 }
 
 export default function SessionDrawer({

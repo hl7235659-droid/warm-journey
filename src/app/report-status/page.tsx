@@ -5,6 +5,7 @@ import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS } from '@/lib/types';
 import type { ReportStatus } from '@/lib/types';
 import type { ReportStatusPublic } from '@/lib/db';
 import { api } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 import { LS_KEYS, MY_REPORTS_MAX, readList } from '@/lib/local';
 import type { MyReport } from '@/lib/local';
 
@@ -20,7 +21,7 @@ const STATUS_SEALS: Record<ReportStatus, string> = {
 };
 
 function fmtDate(ts: number) {
-  return new Date(ts * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+  return formatCNDate(ts, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export default function ReportStatusPage() {
@@ -128,7 +129,7 @@ export default function ReportStatusPage() {
                     {r.code}
                   </span>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-faint)', fontFamily: 'var(--font-sans)', flexShrink: 0 }}>
-                    {new Date(r.ts).toLocaleDateString('zh-CN')}
+                    {formatCNDate(new Date(r.ts))}
                   </span>
                 </button>
               ))}

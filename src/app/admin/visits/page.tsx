@@ -8,6 +8,7 @@ import type { PagedResult, Visit, VisitFeedback } from '@/lib/types';
 import { VISIT_STATUS_LABELS } from '@/lib/types';
 import type { ChatResponse } from '@/lib/ai/types';
 import { api, ACTION_ERR } from '@/lib/api-client';
+import { formatCNDate, formatCNDateTime } from '@/lib/format';
 
 const STATUS_BADGE: Record<Visit['status'], string> = {
   reserved: 'badge-blue', in_store: 'badge-green', completed: 'badge-amber',
@@ -15,7 +16,7 @@ const STATUS_BADGE: Record<Visit['status'], string> = {
 };
 
 function fmtTime(ts: number | null) {
-  return ts ? new Date(ts * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  return ts ? formatCNDateTime(ts, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 }
 
 function Stars({ n }: { n: number }) {
@@ -79,7 +80,7 @@ export default function AdminVisitsPage() {
     const suggestions = week.map(f => (f.suggestion || '').trim()).filter(Boolean).slice(0, 8);
 
     const dataText =
-      `时间范围：近 7 天（${new Date(weekAgo * 1000).toLocaleDateString('zh-CN')} 至 ${new Date().toLocaleDateString('zh-CN')}）\n` +
+      `时间范围：近 7 天（${formatCNDate(weekAgo)} 至 ${formatCNDate(new Date())}）\n` +
       `反馈总量：${totalW} 条${avg !== null ? `，平均评分 ${avg}（满分 5）` : ''}\n` +
       `希望获得的支持分布（被勾选次数）：${dist.length > 0 ? dist.map(([t, n]) => `${t} ${n} 次`).join('、') : '暂无'}\n` +
       (suggestions.length > 0 ? `近期建议原文（最多8条）：\n${suggestions.map(s => `- "${s.slice(0, 60)}"`).join('\n')}` : '近期无文字建议');

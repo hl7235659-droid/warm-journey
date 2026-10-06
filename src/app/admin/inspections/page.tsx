@@ -6,6 +6,7 @@ import type { ListResp } from '@/components/admin/list';
 import type { PagedResult, Inspection } from '@/lib/types';
 import { INSPECTION_RESULT_LABELS } from '@/lib/types';
 import { api } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 import { uploadImages } from '@/lib/upload';
 import type { UploadedImage } from '@/lib/upload';
 
@@ -112,7 +113,7 @@ export default function AdminInspectionsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="td-time">{new Date(ins.created_at * 1000).toLocaleDateString('zh-CN')}</td>
+                  <td className="td-time">{formatCNDate(ins.created_at)}</td>
                 </tr>
               ))}
           </tbody>

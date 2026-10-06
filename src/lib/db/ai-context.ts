@@ -1,5 +1,6 @@
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
-import { haversineMeters, unixNow } from './helpers';
+import { haversineMeters } from '@/lib/geo';
+import { unixNow } from './helpers';
 import { expireStaleVisits } from './visits';
 
 // ---------- 动态上下文：附近开放站点 + 在店人数 + crowdHint ----------

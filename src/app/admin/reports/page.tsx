@@ -6,6 +6,7 @@ import type { ListResp } from '@/components/admin/list';
 import type { PagedResult, Report } from '@/lib/types';
 import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS } from '@/lib/types';
 import { api } from '@/lib/api-client';
+import { formatCNDate } from '@/lib/format';
 
 const STATUS_BADGE: Record<Report['status'], string> = {
   pending: 'badge-amber', processing: 'badge-blue', resolved: 'badge-green', closed: 'badge-red',
@@ -81,7 +82,7 @@ export default function AdminReportsPage() {
                     )}
                   </td>
                   <td><span className={`badge ${STATUS_BADGE[r.status]}`}>{REPORT_STATUS_LABELS[r.status]}</span></td>
-                  <td className="td-time">{new Date(r.created_at * 1000).toLocaleDateString('zh-CN')}</td>
+                  <td className="td-time">{formatCNDate(r.created_at)}</td>
                   <td className="td-nowrap">
                     {r.status === 'pending' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => createWorkOrder(r.id)}>建工单</button>
