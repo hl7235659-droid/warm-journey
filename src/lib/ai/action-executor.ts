@@ -1,4 +1,3 @@
-'use client';
 // 命令执行器：zod 白名单校验 → 分流执行。
 // 读操作（navigate/filter/route）直接执行；写操作（reserve/report）
 // 只做「带路 + 预填」（跳转到既有表单页），绝不自动提交。

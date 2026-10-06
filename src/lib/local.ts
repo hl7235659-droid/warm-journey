@@ -1,6 +1,6 @@
 // localStorage / sessionStorage 读写的唯一入口：SSR 安全、异常一律静默、列表读写带上限裁剪。
 // 键名集中在此，避免同一键在多个文件各抄一遍。
-// AI 侧的存储分层（provider Key 只落 sessionStorage）见 @/components/ai/ai-store。
+// AI 侧的存储分层（provider Key 只落 sessionStorage）见 @/lib/ai/ai-store。
 
 export const LS_KEYS = {
   favs: 'wj_favs',

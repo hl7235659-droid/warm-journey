@@ -7,9 +7,9 @@ import { HISTORY_WINDOW } from '@/lib/ai/types';
 import {
   loadProviders, saveProviders, activeProvider, loadSessions, saveSessions,
   newSession, appendMessage, setSessionTitle, deleteSession,
-} from './ai-store';
-import { getContext } from './ai-context';
-import { executeAction, fetchKnowledgeFor } from './action-executor';
+} from '@/lib/ai/ai-store';
+import { getContext } from '@/lib/ai/ai-context';
+import { executeAction, fetchKnowledgeFor } from '@/lib/ai/action-executor';
 import { pickGreeting } from '@/lib/ai/persona';
 import { api } from '@/lib/api-client';
 import ChatPanel from './ChatPanel';

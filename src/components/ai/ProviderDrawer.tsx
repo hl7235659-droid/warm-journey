@@ -1,7 +1,7 @@
 'use client';
 // AI 提供商管理抽屉：增删改查/设为当前/连通性测试（配置仅存本机 localStorage）
 import { useState } from 'react';
-import { genLocalId } from './ai-store';
+import { genLocalId } from '@/lib/ai/ai-store';
 import type { AiProvider, AiServerStatus, ProviderStore } from '@/lib/ai/types';
 import type { ApiResponse } from '@/lib/types';
 
