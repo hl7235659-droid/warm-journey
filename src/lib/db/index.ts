@@ -734,17 +734,23 @@ export async function getRiderVisitState(db: D1Database, pointId: string, riderT
 export async function checkinVisit(db: D1Database, id: string, code = '') {
   const visit = await getVisit(db, id);
   if (!visit) return { error: 'not_found' as const };
-  const expected = (visit as Visit & { checkin_code?: string | null }).checkin_code ?? '';
-  if (!expected || expected !== code.trim().toLowerCase()) {
+  const expected = visit.checkin_code ?? '';
+  // 入店成功即把 checkin_code 置 NULL（见下面的条件 UPDATE），所以"码为空"= 这张码已被消费。
+  // 已被消费的码不再当 bad_code 报错，交给下面的状态机给出 already / invalid_state，
+  // 与"重复扫码"的原本语义一致；但 reserved 态必须凭码，异常数据（无码预约）不放行。
+  const consumed = !expected;
+  if (!consumed && expected !== code.trim().toLowerCase()) {
     return { error: 'bad_code' as const, visit };
   }
   if (visit.status === 'in_store') return { visit, already: true as const };
   if (visit.status !== 'reserved') return { error: 'invalid_state' as const, visit };
+  if (consumed) return { error: 'bad_code' as const, visit };
   // 条件 UPDATE 保证状态机安全迁移：并发 cancel/checkin 只有一个能成功。
   // reserved_at 谓词 = 预约 TTL：确认入店不在写路径跑 expireStaleVisits（P2-20），
   // 这里自带闸门，否则两小时前占位没到的预约会被扫成"已入店"，名额也被他占着。
+  // checkin_code 同条语句置 NULL：一次性码用完即废，in_store 期间不再被任何响应重复下发。
   const r = await db.prepare(
-    `UPDATE visits SET status = 'in_store', checked_in_at = ?
+    `UPDATE visits SET status = 'in_store', checked_in_at = ?, checkin_code = NULL
      WHERE id = ? AND status = 'reserved' AND reserved_at >= ?`,
   ).bind(unixNow(), id, unixNow() - RESERVATION_TTL).run();
   if ((r.meta.changes ?? 0) === 0) {
