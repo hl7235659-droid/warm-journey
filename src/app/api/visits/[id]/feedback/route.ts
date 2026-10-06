@@ -34,6 +34,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (result.error === 'not_found') return Response.json({ ok: false, error: '记录不存在' }, { status: 404 });
   if (result.error === 'forbidden') return Response.json({ ok: false, error: '只能评价自己的进店记录' }, { status: 403 });
   if (result.error === 'invalid_state') return Response.json({ ok: false, error: '离店后才能评价' }, { status: 409 });
+  // 离店后 7 天窗口（FEEDBACK_WINDOW），过期评分不再进均分与口碑聚合
+  if (result.error === 'expired') return Response.json({ ok: false, error: '评价已过期，仅离店后 7 天内可提交' }, { status: 409 });
   if (result.error === 'duplicate') return Response.json({ ok: false, error: '已提交过评价' }, { status: 409 });
   return Response.json({ ok: true, data: { id: result.id } }, { status: 201 });
 }

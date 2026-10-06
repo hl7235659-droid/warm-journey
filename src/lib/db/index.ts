@@ -822,6 +822,10 @@ export async function listVisits(
 // Visit Feedback（离店满意度）
 // ---------------------------------------------------------------------------
 
+// 评价窗口：离店（含 4h 兜底自动离店）后 7 天内可评价。窗口存在的理由是这批评分
+// 会直接进 AI 周报、口碑摘要与均分，半年前的 visit 被补投会让"近期口碑"失真。
+export const FEEDBACK_WINDOW = 7 * 24 * 3600;
+
 export async function createVisitFeedback(
   db: D1Database,
   data: { visit_id: string; rider_token: string; rating: number; supports: string[]; suggestion: string },
@@ -831,6 +835,10 @@ export async function createVisitFeedback(
   // 只有本人（rider_token 匹配）才能评价，防止拿 visit id 冒名抢占
   if (visit.rider_token !== data.rider_token) return { error: 'forbidden' as const };
   if (visit.status !== 'completed') return { error: 'invalid_state' as const };
+  // checked_out_at 为空说明这条 completed 没有离店时刻（异常数据），不给无限窗口
+  if (!visit.checked_out_at || unixNow() - visit.checked_out_at > FEEDBACK_WINDOW) {
+    return { error: 'expired' as const };
+  }
   const dup = await db.prepare('SELECT id FROM visit_feedback WHERE visit_id = ?')
     .bind(data.visit_id).first<{ id: string }>();
   if (dup) return { error: 'duplicate' as const };
