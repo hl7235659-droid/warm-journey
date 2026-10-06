@@ -13,6 +13,12 @@
     "db:migrate:safe:prod": "node scripts/migrate.cjs --remote",
     "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql",
     "db:seed:demo": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed-demo.sql",
+    "db:seed:ops": "node scripts/seed-ops.mjs",
+    "db:seed:ops:prod": "node scripts/seed-ops.mjs --remote",
+    "db:seed:ops:live": "node scripts/seed-ops.mjs --live-only",
+    "db:seed:ops:live:prod": "node scripts/seed-ops.mjs --remote --live-only",
+    "db:seed:ops:purge": "node scripts/seed-ops.mjs --purge",
+    "db:seed:ops:purge:prod": "node scripts/seed-ops.mjs --remote --purge",
     "test": "node --experimental-strip-types --test \"scripts/tests/*.test.mjs\"",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:create:prod": "node scripts/create-admin.mjs --remote"

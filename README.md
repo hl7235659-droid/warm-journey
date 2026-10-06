@@ -164,6 +164,7 @@ npx wrangler r2 bucket create warm-journey-images
 # 把得到的 database_id 填进 wrangler.toml 的 [[d1_databases]]
 npm run db:migrate:safe:prod                    # 建表（幂等，只补缺失项）
 npx wrangler secret put JWT_SECRET              # 粘贴 openssl rand -hex 32 的输出
+npx wrangler secret put AI_API_KEY              # 服务端兜底模型密钥（可选，见下方「AI 助手环境变量」）
 npm run deploy
 ```
 
@@ -184,18 +185,26 @@ npm run db:migrate:safe:prod    # 探针式补列/补表，只执行缺失项，
 
 ### AI 助手（小暖）环境变量（可选）
 
-Worker 环境变量配置：Dashboard → Workers → warm-journey → Settings → Variables
-（或对敏感值用 `npx wrangler secret put`）。BYOK 优先：用户在悬浮窗自带 Key 时不消耗下表配置。
+`AI_BASE_URL` / `AI_MODEL` 是非敏感项，直接写在 `wrangler.toml` 的 `[vars]`，随 `wrangler deploy` 生效；
+`AI_API_KEY` 必须走 secret：`npx wrangler secret put AI_API_KEY`（`npm run deploy` 的预检会在缺少它时打印提醒）。
+BYOK 优先：用户在悬浮窗自带 Key 时不消耗下表配置，也不占全站日额。
 
 | 变量 | 用途 | 必需 |
 |---|---|---|
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 演示兜底提供商（用户未在悬浮窗配置时的服务器端兜底，如 `https://api.deepseek.com/v1` / key / `deepseek-chat`；KEY 建议走 secret） | 推荐 |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 演示兜底提供商（用户未在悬浮窗配置时的服务器端兜底，如 `https://api.deepseek.com/v1` / key / `deepseek-chat`） | 推荐 |
 | `AI_ALLOWED_HOSTS` | BYOK 出站主机名白名单追加（逗号分隔）；默认只允许 `src/lib/ai/fetch.ts` 内置的主流 OpenAI 兼容域名 | 可选 |
 
-天气不需要任何密钥：`/api/ai/context` 走 wttr.in 免费端点，取不到只少一段上下文文字。
+**三件套缺任何一件，小暖就只用本地知识库回答**，判据是 `resolveServerProvider()`（`src/lib/ai/fetch.ts`），
+`/api/ai/chat` 与 `/api/ai/status` 共用它——批次 9 从 Pages 迁 Workers 时这三个变量没跟过来，
+线上静默退化过一次，而界面上一切正常。
+
+界面口径：悬浮窗顶栏徽章三态是「本机提供商名 / 服务端已就绪 / 离线模式」，
+`/api/ai/status` 只下发 `ready` 布尔值，**不对外暴露服务端用的是哪家模型**（`ChatResponse` 里也不带 `model`）。
 用户在悬浮窗里添加任一 OpenAI 兼容提供商（地址以 `/v1` 结尾）+ 自己的 API Key，
-Key 仅存浏览器 localStorage，永不提交服务器存储。无任何 Key 时小暖自动进入本地回答模式
-（站点功能手册 / 附近驿站 / 站点实时数据 / 周报统计摘要），功能不中断。
+Key 仅存浏览器本机（元数据在 localStorage、Key 只进 sessionStorage），永不提交服务器存储。
+无任何 Key 时小暖自动进入本地回答模式（站点功能手册 / 附近驿站 / 站点数据 / 周报统计摘要），功能不中断。
+
+天气不需要任何密钥：`/api/ai/context` 走 wttr.in 免费端点，取不到只少一段上下文文字。
 
 ### AI 接口频率限制
 
@@ -233,9 +242,20 @@ HTTPS_PROXY=http://127.0.0.1:7897 node scripts/smoke-routes.cjs https://warm-jou
 没有默认账号：`seed.sql` 不含任何管理员。首个账号用脚本创建：
 
 ```bash
-npm run admin:create            # 本地库
-npm run admin:create:prod       # 生产库（按提示输入用户名/密码/角色）
+npm run admin:create            # 本地库（交互式输入，明文会回显）
+npm run admin:create:prod       # 生产库
 ```
+
+生产/共享环境一律用环境变量传值，避免明文回显：
+
+```bash
+ADMIN_USERNAME=nuantu ADMIN_PASSWORD='强口令' ADMIN_ROLE=super_admin \
+  ADMIN_DISPLAY_NAME=刘晗 npm run admin:create:prod
+```
+
+角色三级（`super_admin` / `admin` / `inspector`），建号脚本会校验；口令只以 bcrypt hash 入库，
+明文不落任何文件。`seed-ops` 造数时按库内已有管理员给工单、巡检、点位历史分配归属人，
+所以**先建号再造数**，否则脚本会拒绝执行。
 
 **修改密码**（表名是 `admin_users`；`super_admin` 是 role 值不是用户名）：
 
@@ -322,17 +342,33 @@ OpenNext 构建不走 `vercel build`，不碰 symlink，Windows 上无需任何�
 
 ### 示例数据
 
-两份 seed，风险等级不同，按名字区分：
+三份 seed，风险等级不同，按名字区分：
 
 | 文件 | 内容 | 可执行环境 |
 |---|---|---|
 | `src/lib/db/seed.sql` | 3 个广州大学城（番禺区小谷围岛）示例服务点 + 1 个开通城市 + 6 条 AI 知识库条目，全 `INSERT OR IGNORE` | 本地 / 预览 / 生产皆可 |
 | `src/lib/db/seed-demo.sql` | 11 条 demo visits（含一条 `in_store`）+ 10 条 demo 反馈，专为 T1 客流提示 / T2 口碑摘要 / T3 AI 周报造数据 | **仅本地演示，禁止对生产库执行** |
+| `scripts/seed-ops.mjs` | **合成**的半年运营流水：约 2150 visits + 1200 离店反馈 + 57 上报 + 43 工单 + 22 巡检 + 512 骑手确认 + 19 条点位变更历史 + 12 条知识库，并回填 3 个点位的建档/复核/更新时间 | 本地与生产皆可，但写出去的全是假数据 |
 
 ```bash
-npm run db:seed        # 基础数据（本地库）
-npm run db:seed:demo   # 演示客流（本地库，会污染在店人数与看板数字）
+npm run db:seed             # 基础数据（本地库）
+npm run db:seed:demo        # 演示客流小样（本地库，会污染在店人数与看板数字）
+npm run db:seed:ops         # 半年流水（本地库）
+npm run db:seed:ops:prod    # 半年流水（生产库）
 ```
+
+`seed-ops` 是给路演用的，不是真实业务记录：脚本头注释写明了这一点，它写入的每一行主键都以
+`ops` 开头（实时尾部以 `opslive` 开头），表内 IP 全是虚拟值。
+
+```bash
+npm run db:seed:ops:purge:prod                    # 按 ops* 前缀精确删除，不碰真实数据与 demo* 行
+node scripts/seed-ops.mjs --remote --live-only    # 只重造"当前在店 / 有效预约 / 今日进店"
+node scripts/seed-ops.mjs --dry out.sql           # 只生成 SQL 不执行
+```
+
+`--live-only` 不是锦上添花：`expireStaleVisits` 挂在所有读路径上，预约 2 小时过期、入店 4 小时
+自动离店，"当前在店"必然随时间归零，开场前重跑一次即可（约 10 秒）。数据时间全部按执行时刻回推，
+任何时候跑都是"刚刚过去了 180 天"；脚本先 purge 再写，重复执行不会攒出两份。
 
 误把 demo 跑进生产后的清理办法：按固定主键 `demo000visit*` / `demofdbk*` 删除即可。
 
