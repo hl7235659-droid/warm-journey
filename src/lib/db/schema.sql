@@ -156,6 +156,8 @@ CREATE INDEX IF NOT EXISTS idx_inspections_point ON inspections(point_id);
 CREATE INDEX IF NOT EXISTS idx_visits_point_status ON visits(point_id, status);
 CREATE INDEX IF NOT EXISTS idx_visits_status   ON visits(status);
 CREATE INDEX IF NOT EXISTS idx_visits_rider    ON visits(rider_token, status);
+-- 看板按时间聚合（visits_today 等 WHERE created_at >= ?），visits 线性增长补索引（L10）
+CREATE INDEX IF NOT EXISTS idx_visits_created  ON visits(created_at);
 CREATE INDEX IF NOT EXISTS idx_feedback_point  ON visit_feedback(point_id);
 
 -- 上传台账：upload 签发的 key 与上传者 IP 记账，上报引用时校验归属
