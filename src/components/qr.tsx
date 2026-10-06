@@ -3,8 +3,9 @@
 import { useMemo } from 'react';
 import qrcode from 'qrcode-generator';
 
-// 渲染走 <img src="data:image/gif;base64,…">，不再有 innerHTML 注入面；
-// 白名单留着是为了不把任意外部地址编码成可扫的入站链接（防钓鱼）。
+// 渲染走 <img src="data:image/svg+xml,…">：SVG 当图片资源加载不进 DOM，脚本上下文不可达，
+// innerHTML 注入面归零；又因为是矢量，打印张贴时不会像位图那样缩放发虚。
+// value 白名单留着是为了不把任意外部地址编码成可扫的入站链接（防钓鱼）。
 const QR_VALUE_PATTERN = /^https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]{1,200}$/;
 
 const BOX = (size: number): React.CSSProperties => ({
@@ -17,15 +18,16 @@ const BOX = (size: number): React.CSSProperties => ({
   padding: 6,
 });
 
-// 客户端二维码（GIF data URL），用于骑手入店码等即时展示场景
+// 客户端二维码（SVG data URL），用于骑手入店码与站内打印张贴码
 export default function QrImage({ value, size = 180, label }: { value: string; size?: number; label?: string }) {
   const src = useMemo(() => {
     if (!QR_VALUE_PATTERN.test(value)) return null;
     const qr = qrcode(0, 'M');
     qr.addData(value);
     qr.make();
-    // 6px/模块 + 2 模块留白：位图按容器缩放后仍清晰可扫
-    return qr.createDataURL(6, 2);
+    // scalable：SVG 不写死宽高，<img> 的 CSS 尺寸说了算
+    const svg = qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true });
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }, [value]);
 
   if (!src) {
