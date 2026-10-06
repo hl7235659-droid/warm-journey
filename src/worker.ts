@@ -51,9 +51,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   // 只用定位（首页/详情页/AI 上下文），不碰摄像头与麦克风
   "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
-  // 观察期：只报告不拦截（违规进浏览器控制台）。四页零违规、跑满一个部署周期后，
-  // 把键名改成 Content-Security-Policy 即转 enforce，策略正文不动。
-  "Content-Security-Policy-Report-Only": CSP_POLICY,
+  // 已转 enforce（批次 8 收尾，对应计划 DoD 4）：Report-Only 观察期唯一命中的
+  // 违规是 Cloudflare RUM beacon（已放行，见 3113e97），其后多个部署周期无新增；
+  // 转正前浏览器实测四页（首页 / 详情 / admin / AiDock 对话收发）控制台零违规。
+  // 之后若要引入新第三方资源，先把域补进 CSP_POLICY 再上线，别临时关头。
+  "Content-Security-Policy": CSP_POLICY,
 };
 
 function withSecurityHeaders(res: Response): Response {
