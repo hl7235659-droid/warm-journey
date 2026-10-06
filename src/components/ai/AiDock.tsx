@@ -1,12 +1,14 @@
 'use client';
 
+// 小暖悬浮窗调度层：徽章/问候/抽屉渲染 + 发送链路 + action 执行。
+// 面板拖拽与会话管理分别在 ./hooks.ts（usePanelDrag / useChatSessions），
+// 纯逻辑（本地存储 / 上下文采集 / 命令执行）在 @/lib/ai/*。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import type { AiAction, AiServerStatus, ChatMessage, ChatSession, ProviderStore } from '@/lib/ai/types';
+import type { AiAction, AiServerStatus, ChatMessage, ProviderStore } from '@/lib/ai/types';
 import { HISTORY_WINDOW } from '@/lib/ai/types';
 import {
-  loadProviders, saveProviders, activeProvider, loadSessions, saveSessions,
-  newSession, appendMessage, setSessionTitle, deleteSession,
+  loadProviders, saveProviders, activeProvider, appendMessage, setSessionTitle,
 } from '@/lib/ai/ai-store';
 import { getContext } from '@/lib/ai/ai-context';
 import { executeAction, fetchKnowledgeFor } from '@/lib/ai/action-executor';
@@ -14,15 +16,14 @@ import { pickGreeting } from '@/lib/ai/persona';
 import { api } from '@/lib/api-client';
 import ChatPanel from './ChatPanel';
 import ProviderDrawer from './ProviderDrawer';
+import ProviderBadge, { badgeState } from './ProviderBadge';
 import SessionDrawer from './SessionDrawer';
+import { isDesktop, useChatSessions, usePanelDrag } from './hooks';
 
 type DrawerKind = 'none' | 'providers' | 'sessions';
 
 const DEFAULT_CHIPS = ['附近哪有位置？现在挤吗？', '怎么预约进店？', '帮我上报问题', '我需要法律援助'];
 const POINT_CHIPS = ['这站靠谱吗？', '帮我预约进店', '现在去有位吗？', '我需要法律援助'];
-
-// 面板可拖动（桌面端）：null = 默认锚定右下角
-interface PanelPos { x: number; y: number }
 
 export default function AiDock() {
   const pathname = usePathname();
@@ -31,16 +32,18 @@ export default function AiDock() {
   const [open, setOpen] = useState(false);
   const [drawer, setDrawer] = useState<DrawerKind>('none');
   const [providerStore, setProviderStore] = useState<ProviderStore>({ providers: [], activeId: null });
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
   const [greeting, setGreeting] = useState<string | null>(null);
   const [server, setServer] = useState<AiServerStatus | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
-  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number; lastX?: number; lastY?: number } | null>(null);
   const serverQueriedRef = useRef(false);
+
+  const {
+    sessions, activeId, commit, ensureSession, bindPoint, getSession, getActiveSession,
+    newSession: startSession, selectSession, renameSession, deleteSession, clearAll,
+  } = useChatSessions();
+  const { panelPos, onHeadPointerDown, onHeadPointerMove, onHeadPointerUp } = usePanelDrag(panelRef);
 
   // 徽章得知道服务器端有没有兜底提供商，否则"本机没填 Key"和"整站没接大模型"
   // 会显示成同一句「未配置」。只读环境变量、不查库不出站，故面板首次打开时查一次即可。
@@ -61,44 +64,10 @@ export default function AiDock() {
   }, []);
   useEffect(() => { if (open) setGreeting(null); }, [open]);
 
-  // sessionsRef 是唯一数据源：commit 内同步更新，避免连续更新读到 stale 快照
-  const sessionsRef = useRef<ChatSession[]>([]);
-  const activeIdRef = useRef<string | null>(null);
-
-  // activeIdRef 是唯一数据源，所以先按 ref 算出新值写回、再同步 React state。
-  // 原来把写 ref 放在 setActiveId 的 updater 里，等于在 React 可丢弃/重跑的纯函数里做副作用。
-  const setActiveIdBoth = useCallback((id: string | null | ((cur: string | null) => string | null)) => {
-    const next = typeof id === 'function' ? id(activeIdRef.current) : id;
-    activeIdRef.current = next;
-    setActiveId(next);
-  }, []);
-
-  // 会话提交：ref 即时更新 + 持久化 + 同步 React state
-  const commit = useCallback((fn: (list: ChatSession[]) => ChatSession[]) => {
-    const next = saveSessions(fn(sessionsRef.current));
-    sessionsRef.current = next;
-    setSessions(next);
-    setActiveIdBoth((cur) => (next.some((s) => s.id === cur) ? cur : next[0]?.id ?? null));
-  }, [setActiveIdBoth]);
-
-  // 首帧从 localStorage 恢复
+  // 首帧从 localStorage 恢复本机提供商配置
   useEffect(() => {
     setProviderStore(loadProviders());
-    const ss = loadSessions();
-    sessionsRef.current = ss;
-    setSessions(ss);
-    if (ss.length > 0) setActiveIdBoth(ss[0].id);
-  }, [setActiveIdBoth]);
-
-  // 会话不存在时懒创建（保留 pointId 上下文），返回会话 id
-  const ensureSession = useCallback((pointId?: string): string => {
-    const cur = sessionsRef.current.find((s) => s.id === activeIdRef.current);
-    if (cur) return cur.id;
-    const s = newSession(pointId);
-    commit((list) => [...list, s]);
-    setActiveIdBoth(s.id);
-    return s.id;
-  }, [commit, setActiveIdBoth]);
+  }, []);
 
   // 详情页「问小暖」联动：wj-ai-open {pointId}
   useEffect(() => {
@@ -106,23 +75,11 @@ export default function AiDock() {
       const detail = (e as CustomEvent<{ pointId?: string }>).detail;
       setOpen(true);
       setDrawer('none');
-      if (detail?.pointId) {
-        const cur = sessionsRef.current.find((s) => s.id === activeIdRef.current);
-        if (!cur || (cur.messages.length > 0 && cur.pointId !== detail.pointId)) {
-          // 无会话或当前会话已绑定别处 → 开新会话并激活
-          const s = newSession(detail.pointId);
-          s.title = '问小暖';
-          commit((list) => [...list, s]);
-          setActiveIdBoth(s.id);
-        } else if (cur.pointId !== detail.pointId) {
-          // 空会话 → 直接绑定
-          commit((list) => list.map((x) => (x.id === cur.id ? { ...x, pointId: detail.pointId } : x)));
-        }
-      }
+      if (detail?.pointId) bindPoint(detail.pointId);
     };
     window.addEventListener('wj-ai-open', onAiOpen);
     return () => window.removeEventListener('wj-ai-open', onAiOpen);
-  }, [commit]);
+  }, [bindPoint]);
 
   // ---------- 发送链路 ----------
   const handleSend = useCallback(async (text: string) => {
@@ -135,7 +92,7 @@ export default function AiDock() {
 
     // 历史窗口必须在追加本次提问之前算：commit 之后末位就是刚发的那条，
     // 再随请求 append 一次就是双发（B1）。
-    const session = sessionsRef.current.find((s) => s.id === sid);
+    const session = getSession(sid);
     const history = (session?.messages ?? [])
       .slice(-HISTORY_WINDOW)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -184,11 +141,11 @@ export default function AiDock() {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [ensureSession, providerStore, commit]);
+  }, [ensureSession, getSession, providerStore, commit]);
 
   // ---------- 操作执行 ----------
   const handleExecuteAction = useCallback(async (action: AiAction, msgTs: number) => {
-    const session = sessionsRef.current.find((s) => s.id === activeIdRef.current);
+    const session = getActiveSession();
     if (!session) return;
 
     // list_knowledge：拉取条目，作为新消息展示
@@ -206,7 +163,7 @@ export default function AiDock() {
     if (!result.ok && result.message) {
       commit((list) => appendMessage(list, session.id, { role: 'assistant', content: result.message, mode: 'local', ts: Date.now() }));
     }
-  }, [router, commit]);
+  }, [router, commit, getActiveSession]);
 
   function markActionDone(sessionId: string, msgTs: number) {
     commit((list) => list.map((s) =>
@@ -217,33 +174,16 @@ export default function AiDock() {
     ));
   }
 
-  // ---------- 会话操作 ----------
+  // ---------- 会话操作（抽屉联动部分留在调度层） ----------
   const handleNewSession = useCallback(() => {
-    const cur = sessionsRef.current.find((s) => s.id === activeIdRef.current);
-    const s = newSession(cur?.pointId);
-    commit((list) => [...list, s]);
-    setActiveIdBoth(s.id);
+    startSession();
     setDrawer('none');
-  }, [commit, setActiveIdBoth]);
+  }, [startSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    setActiveIdBoth(id);
+    selectSession(id);
     setDrawer('none');
-  }, [setActiveIdBoth]);
-
-  const handleRenameSession = useCallback((id: string, title: string) => {
-    commit((list) => setSessionTitle(list, id, title));
-  }, [commit]);
-
-  const handleDeleteSession = useCallback((id: string) => {
-    commit((list) => deleteSession(list, id));
-  }, [commit]);
-
-  const handleClearAll = useCallback(() => {
-    const s = newSession();
-    commit(() => [s]);
-    setActiveIdBoth(s.id);
-  }, [commit, setActiveIdBoth]);
+  }, [selectSession]);
 
   // 管理端不渲染
   if (pathname?.startsWith('/admin')) return null;
@@ -251,68 +191,8 @@ export default function AiDock() {
   const session = sessions.find((s) => s.id === activeId) ?? null;
   const provider = activeProvider(providerStore);
 
-  // 徽章三态优先级：本机自带 Key > 服务端兜底 > 真离线。把后两者都写成「未配置」
-  // 正是线上小暖明明该走远端模型却被看成没配置的成因。
-  // 服务端那一档只说"已就绪"，不点名用的是哪家模型（/api/ai/status 也只做布尔值）。
   const byok = provider && provider.apiKey ? provider : null;
-  const serverReady = server?.ready === true;
-  const badgeText = byok
-    ? byok.name
-    : server === null
-      ? '检查中…'
-      : serverReady
-        ? '服务端已就绪'
-        : '离线模式';
-  const badgeOn = Boolean(byok) || serverReady;
-  const badgeTitle = byok
-    ? 'AI 提供商设置（当前使用本机自带 Key）'
-    : serverReady
-      ? '服务器端已配置模型兜底 · 点此可改用自己携带的 Key'
-      : '本站未配置服务器端模型 · 小暖走本地知识库回答，点此可自带 Key 接大模型';
-  const emptyHint = byok || server === null
-    ? null
-    : serverReady
-      ? '服务器端已配置模型，不用自带 Key，直接问就行'
-      : '当前为离线模式 · 点顶栏「离线模式」添加 AI 提供商可获得完整能力';
-
-  // ---------- 面板拖拽（仅桌面端，顶栏为手柄） ----------
-  // 拖拽过程中直接写 transform（不经过 setState），pointerup 才提交位置，
-  // 避免每帧触发含 Markdown 列表的整体重渲染。
-  const isDesktop = () => typeof window !== 'undefined' && window.innerWidth > 640;
-  const onHeadPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return; // 按钮不触发拖拽
-    if (!isDesktop()) return;
-    const rect = panelRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: rect.left, baseY: rect.top };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onHeadPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    const panel = panelRef.current;
-    if (!d || !panel) return;
-    const rect = panel.getBoundingClientRect();
-    const x = Math.min(Math.max(d.baseX + e.clientX - d.startX, 8), window.innerWidth - rect.width - 8);
-    const y = Math.min(Math.max(d.baseY + e.clientY - d.startY, 8), window.innerHeight - rect.height - 8);
-    dragRef.current = { ...d, lastX: x, lastY: y };
-    panel.style.transform = `translate(${x - d.baseX}px, ${y - d.baseY}px)`;
-  };
-  const onHeadPointerUp = () => {
-    const d = dragRef.current;
-    dragRef.current = null;
-    const panel = panelRef.current;
-    if (d && panel && d.lastX !== undefined && d.lastY !== undefined) {
-      // 先把最终位置写进内联样式再去掉 transform，避免回弹闪烁；
-      // 随后提交 state，React 重渲染的内联样式与手写值一致
-      panel.style.left = `${d.lastX}px`;
-      panel.style.top = `${d.lastY}px`;
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      panel.style.animation = 'none';
-      panel.style.transform = '';
-      setPanelPos({ x: d.lastX, y: d.lastY });
-    }
-  };
+  const badge = badgeState(byok, server);
 
   const panelStyle: React.CSSProperties | undefined =
     panelPos && isDesktop()
@@ -362,15 +242,7 @@ export default function AiDock() {
             onPointerUp={onHeadPointerUp}
             onPointerCancel={onHeadPointerUp}
           >
-            <button
-              type="button"
-              className={`aidock-provider${badgeOn ? ' is-on' : ''}`}
-              onClick={() => setDrawer('providers')}
-              title={badgeTitle}
-            >
-              <span className="aidock-dot" aria-hidden="true" />
-              {badgeText}
-            </button>
+            <ProviderBadge state={badge} onOpen={() => setDrawer('providers')} />
             <div className="aidock-head-title">
               <div className="aidock-title">小暖</div>
               <div className="aidock-sub">{session?.pointId ? '已关联当前站点' : '骑手驿站 AI 助手'}</div>
@@ -397,7 +269,7 @@ export default function AiDock() {
           <ChatPanel
             messages={session?.messages ?? []}
             sending={sending}
-            emptyHint={emptyHint}
+            emptyHint={badge.emptyHint}
             sessionPointId={session?.pointId}
             chips={session?.pointId ? POINT_CHIPS : DEFAULT_CHIPS}
             onSend={handleSend}
@@ -417,9 +289,9 @@ export default function AiDock() {
               sessions={sessions}
               activeId={activeId}
               onSelect={handleSelectSession}
-              onRename={handleRenameSession}
-              onDelete={handleDeleteSession}
-              onClearAll={handleClearAll}
+              onRename={renameSession}
+              onDelete={deleteSession}
+              onClearAll={clearAll}
               onClose={() => setDrawer('none')}
             />
           )}
