@@ -132,9 +132,11 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
         <button
           className="btn btn-primary btn-lg btn-full"
           onClick={handleReserve}
-          disabled={busy || pointStatus === 'closed' || full}
+          disabled={busy || pointStatus !== 'open' || full}
         >
-          {pointStatus === 'closed' ? '站点已关闭' : full ? '名额已满，稍后再试' : busy ? '预约中…' : '预约进店'}
+          {pointStatus !== 'open'
+            ? (pointStatus === 'temp_closed' ? '站点临时关闭' : '站点已关闭')
+            : full ? '名额已满，稍后再试' : busy ? '预约中…' : '预约进店'}
         </button>
       ) : visit.status === 'reserved' ? (
         <div style={{ textAlign: 'center' }}>

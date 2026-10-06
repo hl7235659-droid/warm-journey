@@ -23,7 +23,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const point = await getPoint(env.DB, id);
   if (!point) return Response.json({ ok: false, error: '服务点不存在' }, { status: 404 });
-  if (point.status === 'closed') return Response.json({ ok: false, error: '该站点已关闭，无法预约' }, { status: 409 });
+  // 只有 open 可预约：temp_closed 只是"暂停"，此前被当成可预约漏放，名额被占用后无人接待
+  if (point.status !== 'open') {
+    const error = point.status === 'temp_closed' ? '该站点临时关闭，暂停预约' : '该站点已关闭，无法预约';
+    return Response.json({ ok: false, error }, { status: 409 });
+  }
 
   const result = await reserveVisit(env.DB, id, parsed.rider_token, ip);
   if ('ipLimited' in result && result.ipLimited) {
