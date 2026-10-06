@@ -35,6 +35,7 @@ next-env.d.ts
 .workbuddy/
 .workbuddy-ai/
 /warm-journey-deploy.tar.gz
+/warm-journey-src-*.zip
 
 # EPERM workaround residues
 .next.bak*/

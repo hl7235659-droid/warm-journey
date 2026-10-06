@@ -8,6 +8,9 @@
 > 旧域名 `warm-journey.pages.dev`（批次 9 前的 Pages 部署）保留作回滚兜底，不再更新。
 > 自定义域配置在 `wrangler.toml` 的 `routes`（Workers Custom Domains，
 > 自动管理 DNS 与证书），如需更换域名改 pattern 后 `npx wrangler deploy` 即可。
+>
+> **接手开发/运维必读**：[维护手册.md](维护手册.md) —— 发布与回滚纪律、数据库迁移原则、
+> 改动影响速查表、安全基线、本机环境排障表、事故档案与挂账清单。
 
 ---
 
@@ -25,8 +28,8 @@
 **C 端（骑手端）**
 - 地图浏览所有服务点，按城市、状态、关键词筛选，定位距离排序，按服务项目（充电/热饭等）筛选
 - 查看服务点详情（地址、营业时间、准入要求、站点近况信号）
-- **预约进店**：预约占名额（保留 2 小时）→ 入店码到店确认 → 扫店内离店码离店，实时在店人数/名额条；入店 4 小时未离店自动释放名额
-- **离店满意度卡片**：星级 + 希望的支持 + 改进建议（仿美团单车结束骑行）
+- **预约进店**：预约占名额（保留 2 小时）→ **一次性入店码**到店确认（确认即作废）→ 扫店内离店码离店，实时在店人数/名额条；入店 4 小时未离店自动释放名额
+- **离店满意度卡片**：星级 + 希望的支持 + 改进建议（仿美团单车结束骑行，离店后 7 天内可评价）
 - 上报服务点问题（可附现场照片，≤3 张），凭查询码免登录查处理进度
 - 一键确认「信息无误」，收藏常用站点（本机保存）
 - PWA：可加到主屏，离线可看已缓存的站点列表
@@ -82,8 +85,8 @@ Cloudflare Pages，Windows 上需要三层猴补丁（symlink junction 降级 / 
 
 2026-10-06（批次 9）整体迁移到官方维护的 `@opennextjs/cloudflare`（Workers + Static
 Assets），`vercel`、next-on-pages、三层补丁、`.npmrc legacy-peer-deps` 全部退场。两次事故
-的完整取证与修复过程见 git 历史中的 `scripts/build-pages.cjs`（批次 9 前的最后版本）与
-《过度设计修复计划-2026-10-06.md》批次 1/9 回写。
+的完整取证与修复过程见 git 历史（`scripts/build-pages.cjs` 批次 9 前的最后版本，及 2026-10-05/06
+的相关提交与回写记录）；教训沉淀与现行防线见[维护手册](维护手册.md) §6。
 
 ---
 
@@ -131,9 +134,12 @@ npx wrangler d1 execute warm-journey-db --local --command "SELECT id,name FROM s
 ### 测试
 
 ```bash
-npm test             # scripts/tests/ 下的纯函数单测（SSRF 白名单 / 分页钳制 / admission 结构化等）
-npm run test:workers # tests/workers/ 下跑在真实 workerd + 真实 D1 的用例（withAdmin 守卫 / visit 状态机 / 容量并发 / 出口脱敏 / AI 降级）
+npm test             # scripts/tests/ 纯函数单测，26 例（SSRF 白名单 / 分页钳制 / 距离排序 / visit 出口脱敏 / LIKE 归一等）
+npm run test:workers # tests/workers/ 真实 workerd + 真实 D1，8 文件 122 例
+                     #（withAdmin 守卫矩阵 / visit 状态机全格迁移表 / 容量并发 / 出口脱敏 / AI 降级与 action 协议）
 ```
+
+改哪类代码必须跑哪类测试、以及"新增 admin 路由 / visit 出口"的守恒约束，见[维护手册](维护手册.md) §3。
 
 `test:workers` 用 vitest-pool-workers，绑定来自 `wrangler.test.toml`（与生产同名的 DB / BUCKET，
 但 main 指向 `tests/workers/entry.ts`，因此**不需要先跑 OpenNext 构建**）；每个测试文件一份独立库，
@@ -282,6 +288,21 @@ npx wrangler d1 execute warm-journey-db --remote \
 
 ---
 
+## 安全基线
+
+改代码前先知道这些"看起来可以省"的机制都是刻意的（详细维护规则见[维护手册](维护手册.md) §3-4）：
+
+- **管理端**：全部 40 个 admin handler 经 `withAdmin` 守卫（无裸路由）；写操作额外 `active: true`
+  （JWT 之外回查 DB，删号/降级即时生效）；登录限流 D1 故障时 fail-closed 返回 503；
+- **用户端**：`rider_token` 归属校验 + 一次性入店码（checkin 即置 NULL）+ 容量原子闸（并发不超卖）；
+  所有 visit 公开响应过 `sanitizeVisit` 单口脱敏（`lib/visit-sanitize.ts`）；
+- **注入与 XSS**：SQL 全预编译参数，动态 LIKE 走 `@/lib/like-term`，R2 key 走 `IMAGE_KEY_RE`；
+  二维码渲染为 SVG data URL `<img>`（零 innerHTML）；
+- **传输层**：CSP（enforce）+ X-Frame-Options DENY + nosniff + Referrer-Policy 由
+  `src/worker.ts` 出口统一注入，新第三方资源先补 `CSP_POLICY` 再上线。
+
+---
+
 ## 项目结构
 
 ```
@@ -294,12 +315,16 @@ warm-journey/
 │   │   ├── admin/               # 管理后台（含 knowledge 知识库、visits AI 周报）
 │   │   └── api/                 # API 路由（ai/chat|context|test|knowledge 等）
 │   ├── components/
+│   │   ├── admin/               # 管理端共用组件（列表分页骨架 / ModalForm 表单收口）
 │   │   ├── ai/                  # AI 助手「小暖」悬浮窗（AiDock/ChatPanel/抽屉/操作卡）
 │   │   └── ornaments.tsx        # 梅枝 / 角花 / 笔锋线共用装饰
 │   ├── lib/
-│   │   ├── ai/                  # AI 基础库（prompt 组装/降级/action 协议/天气/截断）
+│   │   ├── ai/                  # AI 基础库（prompt 组装/降级/action 协议/会话存储/上下文）
+│   │   ├── db/                  # 数据访问层：按域拆分（points/visits/reports/…共 14 个域文件，
+│   │   │                        #   index.ts 仅 re-export，调用方一律 `@/lib/db`）+ schema / seed
+│   │   ├── visit-sanitize.ts    # visit 公开响应的唯一脱敏口（keepCode / maskToken 例外语义）
+│   │   ├── http.ts              # withAdmin 守卫 / readJson+zod / 限流辅助
 │   │   ├── covers.ts            # 站点封面图映射（实景 / 插画占位）
-│   │   ├── db/                  # 数据库访问层 / schema / seed
 │   │   └── types.ts             # TypeScript 类型定义
 │   └── app/globals.css          # 全局样式（国风设计系统 + AI 悬浮窗 + 动效）
 ├── public/
