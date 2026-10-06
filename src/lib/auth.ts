@@ -5,10 +5,10 @@ const EXPIRY = '8h';
 
 // 密钥只从环境变量读取，绝不兜底公开字符串：缺失时直接抛错（fail-loud），
 // 防止生产环境用已知密钥签发 token。部署时必须：
-//   npx wrangler pages secret put JWT_SECRET
+//   npx wrangler secret put JWT_SECRET
 function getSecret(env?: { JWT_SECRET?: string }) {
   const raw = env?.JWT_SECRET ?? process.env.JWT_SECRET;
-  if (!raw) throw new Error('JWT_SECRET 未配置：请通过 wrangler pages secret put JWT_SECRET 注入高熵密钥');
+  if (!raw) throw new Error('JWT_SECRET 未配置：请通过 npx wrangler secret put JWT_SECRET 注入高熵密钥');
   return new TextEncoder().encode(raw);
 }
 

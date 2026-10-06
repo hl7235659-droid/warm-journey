@@ -7,10 +7,14 @@
 // 密码哈希在本机用 bcryptjs 计算，SQL 只包含哈希，明文不落任何文件。
 import { createRequire } from 'node:module';
 import readline from 'node:readline/promises';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { stdin, stdout, exit, env, argv } from 'node:process';
 
 const require = createRequire(import.meta.url);
 const bcrypt = require('bcryptjs');
+const { DB_NAME, ACCOUNT_ID } = require('./db-objects.cjs');
 
 const remote = argv.includes('--remote');
 const username = (env.ADMIN_USERNAME || 'admin').trim();
@@ -49,13 +53,23 @@ const sql =
   `VALUES (lower(hex(randomblob(8))), '${username.replace(/'/g, "''")}', '${hash.replace(/'/g, "''")}', ` +
   `'${role}', '${display.replace(/'/g, "''")}', unixepoch(), unixepoch());`;
 
-const args = ['wrangler', 'd1', 'execute', 'warm-journey-db', '--command', sql, '-y'];
-if (remote) args.push('--remote');
-else args.push('--local');
+// 走 --file 而不是 --command：bcrypt hash 里的 `$` 与 SQL 里的空格经 Windows 的
+// shell=true 二次解析会被拆坏（此前 --remote 建号失败就是撞在这上面），
+// 而写进临时文件后 wrangler 自己读，参数表里一个特殊字符都不过。
+const tmp = path.join(os.tmpdir(), `wj-admin-${Date.now()}.sql`);
+fs.writeFileSync(tmp, sql, 'utf8');
+const WRANGLER = path.resolve(import.meta.dirname, '..', 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+const args = [
+  WRANGLER, 'd1', 'execute', DB_NAME, '--file', tmp, '-y', remote ? '--remote' : '--local',
+];
 
 console.log(`→ 正在${remote ? '（远程）' : '（本地）'}创建管理员「${username}」…`);
 const { spawnSync } = await import('node:child_process');
-const r = spawnSync('npx', args, { stdio: 'inherit', shell: process.platform === 'win32' });
+const r = spawnSync(process.execPath, args, {
+  stdio: 'inherit',
+  env: { ...env, CLOUDFLARE_ACCOUNT_ID: ACCOUNT_ID },
+});
+fs.rmSync(tmp, { force: true });
 if (r.status !== 0) {
   console.error('✗ 创建失败（用户名可能已存在，或 wrangler 未登录）');
   exit(r.status ?? 1);

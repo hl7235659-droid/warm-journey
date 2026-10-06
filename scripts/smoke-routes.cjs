@@ -42,7 +42,9 @@ const GET_ROUTES = [
   ['/', [200], 'html'],
   ['/api/points', [200]],
   ['/api/cities', [200]],
-  ['/api/visits/demo000visit01', [200]],
+  // 这个 id 来自 seed-demo，只在演示库里有；404 同样是"路由跑通、按 id 查无此单"的正确行为。
+  // 冒烟验的是 isolate 与路由是否活着，不是库里有没有这一行，所以两个状态码都算过。
+  ['/api/visits/demo000visit01', [200, 404]],
   ['/api/ai/context?lat=23.04&lng=113.40', [200]],
 ];
 // POST 路由：不带凭证，预期 4xx（证明新校验代码在跑且路由可执行，而非 500）
