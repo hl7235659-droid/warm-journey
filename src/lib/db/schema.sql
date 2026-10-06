@@ -87,7 +87,6 @@ CREATE TABLE IF NOT EXISTS inspections (
   inspector_id   TEXT REFERENCES admin_users(id),
   result         TEXT NOT NULL DEFAULT 'pass'
                   CHECK(result IN ('pass','fail','partial')),
-  findings       TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
   images         TEXT NOT NULL DEFAULT '[]',
   notes          TEXT NOT NULL DEFAULT '',
   inspected_at   INTEGER NOT NULL DEFAULT (unixepoch()),
