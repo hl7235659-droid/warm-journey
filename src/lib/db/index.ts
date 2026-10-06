@@ -1165,7 +1165,9 @@ export async function checkRateLimit(
   ).bind(key, curStart, prevStart).all<{ window_start: number; count: number }>();
   // 顺手清理旧窗口：保留 7 天，确保 86400s 窗口的"上一窗口"行不被提前删掉
   // （否则每日限流退化为固定窗口，日界处可短时 2 倍）
-  if (now % 60 === 0) {
+  // 概率摊销：`now % 60 === 0` 只在整秒恰好落在 60 的倍数那一秒才触发，是"近似随机"
+  // 而非均摊——请求时刻与秒对齐无关，多数窗口一次都不清理。gc.sql 是同窗口的周期兜底。
+  if (Math.random() < 1 / 60) {
     await db.prepare('DELETE FROM ai_rate WHERE window_start < ?').bind(now - 7 * 86400).run();
   }
   const cur = rows.results?.find((r) => r.window_start === curStart)?.count ?? 0;

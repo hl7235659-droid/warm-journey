@@ -80,21 +80,15 @@ export async function POST(req: Request) {
   const input = parsed.data;
 
   const ip = getClientIp(req);
-  // 限流：每 IP 每分钟 20 次（双窗口滑动）
+  // 限流两条，都在转发前拦：每 IP 每分钟 20 次（README 承诺口径，双窗口滑动）+ 每 IP 每日 200 次。
+  // 全站日额不在这里：它只拦"烧服务端 Key"的请求，见下面提供商解析之后的 usesServerKey 分支。
   const allowed = await checkRateLimit(env.DB, `chat:${ip}`, { limit: 20, windowSec: 60 });
   if (!allowed) {
     return jsonErr('小暖有点忙，请一分钟后再试～', 429);
   }
-  // 每 IP 每日 200 次：压住单点滥用
   const dailyAllowed = await checkRateLimit(env.DB, `chat:daily:${ip}`, { limit: 200, windowSec: 86400 });
   if (!dailyAllowed) {
     return jsonErr('今日的对话额度已用完，请明天再来～', 429);
-  }
-  // 全站每日总量：分布式 IP / IPv6 轮换无法线性放大服务端 Key 消耗
-  const day = Math.floor(Date.now() / 86400_000);
-  const globalAllowed = await checkRateLimit(env.DB, `chat:global:${day}`, { limit: GLOBAL_DAILY_LIMIT, windowSec: 86400 });
-  if (!globalAllowed) {
-    return jsonErr('今天的小暖太忙了，请明天再来～', 429);
   }
 
   const history = normalizeMessages(input.messages);
@@ -180,12 +174,13 @@ export async function POST(req: Request) {
   });
 
   // ---------- 提供商解析：请求自带（BYOK）→ 环境变量 → 本地降级 ----------
-  // BYOK 仅走 https（validateBaseUrl 强制），且受每 IP 与全站每日上限约束；
-  // 服务端 AI_* 环境变量只作为兜底，同样受每日上限约束。
+  // BYOK 仅走 https（validateBaseUrl 强制），受每 IP 的分钟/日额约束——它烧的是用户自己的
+  // Key，不占全站额度；服务端 AI_* 环境变量兜底另外受全站日额约束（下面 usesServerKey 分支）。
   let baseUrl = '';
   let apiKey = '';
   let model = '';
   let temperature = 0.3;
+  let usesServerKey = false;
   if (input.provider) {
     const v = validateBaseUrl(input.provider.baseUrl, env.AI_ALLOWED_HOSTS);
     if (!v.ok) return jsonErr(`提供商地址无效：${v.error}`, 422);
@@ -199,6 +194,7 @@ export async function POST(req: Request) {
       baseUrl = v.url;
       apiKey = env.AI_API_KEY;
       model = env.AI_MODEL;
+      usesServerKey = true;
     }
   }
 
@@ -206,6 +202,16 @@ export async function POST(req: Request) {
     // 无任何可用提供商 → 本地降级
     const fb = localFallback(lastUser.content, context, pointInfo, fallbackArgs);
     return localResponse(fb.text, fb.action);
+  }
+
+  // 全站每日总量：分布式 IP / IPv6 轮换无法线性放大服务端 Key 消耗。
+  // 只有真正会用服务端 Key 转发的请求才计数，BYOK 请求既不该被它拦、也不该消耗它。
+  if (usesServerKey) {
+    const day = Math.floor(Date.now() / 86400_000);
+    const globalAllowed = await checkRateLimit(env.DB, `chat:global:${day}`, { limit: GLOBAL_DAILY_LIMIT, windowSec: 86400 });
+    if (!globalAllowed) {
+      return jsonErr('今天的小暖太忙了，请明天再来～', 429);
+    }
   }
 
   // ---------- 远端转发 ----------
