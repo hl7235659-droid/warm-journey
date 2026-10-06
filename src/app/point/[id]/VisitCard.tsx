@@ -37,13 +37,18 @@ export default function VisitCard({ pointId, pointStatus, initialOccupancy }: Pr
   useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const refresh = useCallback(async () => {
-    const json = await api<{ visit: Visit | null }>('/api/visits/active', {
+    const json = await api<{ visit: Visit | null; occupancy: Occupancy }>('/api/visits/active', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ point_id: pointId, rider_token: getRiderToken() }),
     });
     // 离线或业务失败：保持现状
-    if (json.ok && json.data) setVisit(json.data.visit);
+    if (json.ok && json.data) {
+      setVisit(json.data.visit);
+      // B5：占用数字此前只由 SSR 给一次，之后全靠本地 reserved±1 乐观加减，
+      // 任一请求失败就永久漂移。刷新状态必须连数字一起对齐服务端。
+      setOccupancy(json.data.occupancy);
+    }
   }, [pointId]);
 
   useEffect(() => { void refresh(); }, [refresh]);

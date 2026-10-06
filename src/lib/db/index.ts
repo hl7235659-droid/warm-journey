@@ -621,7 +621,9 @@ export const RESERVATION_TTL = 2 * 3600;
 export const AUTO_CHECKOUT_AFTER = 4 * 3600;
 
 // 懒清理：超时 reserved → expired；超时在店 → 自动 completed。
-// 涉及占用统计前都要先跑。
+// 只在**读路径**跑（getOccupancy / getRiderVisitState / getNearbyPoints / 管理端
+// listVisits / getAdminStats / reserveVisit 的容量闸门）——写路径每次白跑两条全表 UPDATE，
+// 而过期数据真正的危害是让这些数字虚高、被展示给用户。
 export async function expireStaleVisits(db: D1Database) {
   const now = unixNow();
   await db.prepare(
@@ -639,12 +641,7 @@ export interface Occupancy {
   capacity: number | null;
 }
 
-export async function getOccupancy(
-  db: D1Database,
-  pointId: string,
-  opts: { skipExpire?: boolean } = {},
-): Promise<Occupancy> {
-  if (!opts.skipExpire) await expireStaleVisits(db);
+async function occupancyFor(db: D1Database, pointId: string): Promise<Occupancy> {
   const [inStore, reserved, point] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as n FROM visits WHERE point_id = ? AND status = 'in_store'`)
       .bind(pointId).first<{ n: number }>(),
@@ -661,6 +658,12 @@ export async function getOccupancy(
   return { in_store: inStore?.n ?? 0, reserved: reserved?.n ?? 0, capacity };
 }
 
+// 占用数字是"过期预约也算人在"的高发区，先跑懒清理再统计（见 expireStaleVisits）
+export async function getOccupancy(db: D1Database, pointId: string): Promise<Occupancy> {
+  await expireStaleVisits(db);
+  return occupancyFor(db, pointId);
+}
+
 // 同一 IP 在 24 小时内允许的新增预约数：拦脚本批量占位，
 // 同时避免宿舍/基站共享出口 IP 的历史活跃预约把正常骑手永久挡在门外
 export const MAX_ACTIVE_RESERVES_PER_IP = 10;
@@ -674,6 +677,7 @@ export async function reserveVisit(
   riderToken: string,
   ip = '',
 ) {
+  // 容量闸门本身就是占用统计，先清过期，否则过期预约会虚占名额
   await expireStaleVisits(db);
   const existing = await db.prepare(
     `SELECT * FROM visits WHERE point_id = ? AND rider_token = ? AND status IN ('reserved','in_store')
@@ -734,18 +738,23 @@ export async function getVisit(db: D1Database, id: string) {
   ).bind(id).first<Visit>();
 }
 
-// 骑手在某点位的进行中 visit（离店页 / 详情页用）
-export async function getActiveVisit(db: D1Database, pointId: string, riderToken: string) {
+// 骑手在某点位的进行中 visit + 该点位实时占用（详情页 VisitCard 刷新用）。
+// 合并成一个函数是因为这两份数据必须同一时刻取：拆成 getActiveVisit + getOccupancy
+// 会让 expireStaleVisits 在一个请求里白跑两遍。
+export async function getRiderVisitState(db: D1Database, pointId: string, riderToken: string) {
   await expireStaleVisits(db);
-  return db.prepare(
-    `SELECT * FROM visits WHERE point_id = ? AND rider_token = ? AND status IN ('reserved','in_store')
-     ORDER BY created_at DESC LIMIT 1`,
-  ).bind(pointId, riderToken).first<Visit>();
+  const [visit, occupancy] = await Promise.all([
+    db.prepare(
+      `SELECT * FROM visits WHERE point_id = ? AND rider_token = ? AND status IN ('reserved','in_store')
+       ORDER BY created_at DESC LIMIT 1`,
+    ).bind(pointId, riderToken).first<Visit>(),
+    occupancyFor(db, pointId),
+  ]);
+  return { visit, occupancy };
 }
 
 // 入店确认：必须携带二维码里的一次性入店码，仅凭 visit id 无法远程确认
 export async function checkinVisit(db: D1Database, id: string, code = '') {
-  await expireStaleVisits(db);
   const visit = await getVisit(db, id);
   if (!visit) return { error: 'not_found' as const };
   const expected = (visit as Visit & { checkin_code?: string | null }).checkin_code ?? '';
@@ -754,10 +763,13 @@ export async function checkinVisit(db: D1Database, id: string, code = '') {
   }
   if (visit.status === 'in_store') return { visit, already: true as const };
   if (visit.status !== 'reserved') return { error: 'invalid_state' as const, visit };
-  // 条件 UPDATE 保证状态机安全迁移：并发 cancel/checkin 只有一个能成功
+  // 条件 UPDATE 保证状态机安全迁移：并发 cancel/checkin 只有一个能成功。
+  // reserved_at 谓词 = 预约 TTL：确认入店不在写路径跑 expireStaleVisits（P2-20），
+  // 这里自带闸门，否则两小时前占位没到的预约会被扫成"已入店"，名额也被他占着。
   const r = await db.prepare(
-    `UPDATE visits SET status = 'in_store', checked_in_at = ? WHERE id = ? AND status = 'reserved'`,
-  ).bind(unixNow(), id).run();
+    `UPDATE visits SET status = 'in_store', checked_in_at = ?
+     WHERE id = ? AND status = 'reserved' AND reserved_at >= ?`,
+  ).bind(unixNow(), id, unixNow() - RESERVATION_TTL).run();
   if ((r.meta.changes ?? 0) === 0) {
     return { error: 'invalid_state' as const, visit: await getVisit(db, id) };
   }
