@@ -7,17 +7,11 @@ import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { api } from '@/lib/api-client';
 import type { PointStats } from '@/lib/db';
 import { LS_KEYS, readList, writeList } from '@/lib/local';
+import { haversine, byDistance } from '@/lib/geo';
 import { Branch, Corners, Swoosh } from '@/components/ornaments';
 
 // 状态筛选 chips：'全部' + 与后端同一份状态枚举
 const STATUS_CHIPS: Array<'' | PointStatus> = ['', ...POINT_STATUSES];
-
-// Simple distance calc (Haversine, km)
-function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 function formatDist(km: number) {
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
@@ -153,9 +147,7 @@ export default function HomePage() {
     if (json.ok && json.data) {
       let items = json.data.items;
       if (userLat !== null && userLng !== null) {
-        items = [...items].sort((a, b) =>
-          haversine(userLat, userLng, a.lat, b.lng) - haversine(userLat, userLng, b.lat, b.lng)
-        );
+        items = byDistance(items, userLat, userLng);
       }
       setPoints(items);
       setTotal(json.data.total);
