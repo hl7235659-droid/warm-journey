@@ -66,8 +66,16 @@ export async function POST(req: Request) {
   await env.BUCKET.put(key, file.stream(), {
     httpMetadata: { contentType: file.type },
   });
-  // 台账记账：上报提交时会校验 images 中的 key 属于本 IP 近期上传
-  await recordUpload(env.DB, key, ip);
+  // 台账记账：上报提交时会校验 images 中的 key 属于本 IP 近期上传。
+  // 台账写失败必须回滚刚上传的对象——R2 与 D1 没有原子性，留着无主对象的话
+  // 客户端重传一次就多一个孤儿，且上传限流只拖慢不清零（M4）。
+  try {
+    await recordUpload(env.DB, key, ip);
+  } catch (e) {
+    await env.BUCKET.delete(key).catch(() => {});
+    console.error('upload ledger failed, object rolled back:', key, (e as { message?: string })?.message ?? 'unknown');
+    return jsonErr('上传失败，请重试', 500);
+  }
 
   return Response.json({ ok: true, data: { key, url: `/api/images/${key}` } }, { status: 201 });
 }
