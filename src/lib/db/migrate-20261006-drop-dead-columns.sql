@@ -13,6 +13,16 @@
 --       npx wrangler d1 execute warm-journey-db --remote --file=src/lib/db/migrate-20261006-drop-dead-columns.sql
 -- 恢复：wrangler d1 time-travel restore（书签见批次 7 回写）或导入 ../d1-backup-20261006.sql。
 --
+-- ⚠️ 执行状态（2026-10-06）：
+--   * 本机 --local：已全部执行并核对（PRAGMA table_info 五列均已消失）。
+--   * 生产 --remote：只执行了最后的 DROP INDEX idx_confirms_point（对 SQL 语义透明，
+--     新老代码都不受影响）。下面 5 条 DROP COLUMN **必须在"含批次 7 的新构建部署到生产之后"**
+--     再执行——生产当前在跑的是 31a5d91（批次 1/2 时代），它的 db/index.ts 仍把这五列
+--     写进 INSERT/UPDATE/JOIN：先删列会让管理端新建/编辑点位、新建工单、工单列表、
+--     新建巡检全部报 "no such column" 而 500。
+--   * 反过来是安全的：这五列要么可空、要么有 DEFAULT，新代码的 INSERT 一律显式列表，
+--     读取又走 deserializePoint 的显式挑字段，所以"新代码 + 未删列的老库"完全正常。
+--
 -- 注：work_orders.assigned_name 不在这份文件里——它是 listWorkOrders/getWorkOrder 里
 -- `au.display_name as assigned_name` 的 JOIN 别名，不是列（修复计划原 SQL 的笔误）。
 
