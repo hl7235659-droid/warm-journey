@@ -9,4 +9,4 @@ export const PUT = withAdmin<{ id: string }>(async ({ env, params: { id } }) => 
   if (result.error === 'not_found') return jsonErr('记录不存在', 404);
   if (result.error === 'invalid_state') return jsonErr('该记录不在在店状态', 409);
   return Response.json({ ok: true, data: { visit: result.visit } });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

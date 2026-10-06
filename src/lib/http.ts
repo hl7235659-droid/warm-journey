@@ -37,7 +37,9 @@ interface WithAdminArgs<P> {
 
 // admin 路由统一入口：requireAdmin → 可选角色校验 → handler。
 // opts.roles 缺省表示"任意已登录管理员"；写操作必须显式声明角色白名单。
-// opts.active=true 用于账号管理等高风险操作：JWT 之外回查 DB，被删/降级账号立即失效。
+// opts.active=true：JWT 之外回查 DB，被删/降级账号立即失效。
+// 约定：写路由（POST/PUT/DELETE）一律带 active，把 8h 的 token 撤销窗口压到零；
+// 读路由不带，免得每次列表都多一次主键回查。
 // 注：第二参数按 Next 15 类型约定声明为必选（运行时仍做兼容兜底）。
 export function withAdmin<P = Record<string, string>>(
   handler: (args: WithAdminArgs<P>) => Promise<Response>,

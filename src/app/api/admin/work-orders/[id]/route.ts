@@ -27,7 +27,7 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
   }
 
   return Response.json({ ok: true, data: { message: '工单已更新' } });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });
 
 export const GET = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const order = await getWorkOrder(env.DB, id);

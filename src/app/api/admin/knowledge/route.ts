@@ -33,4 +33,4 @@ export const POST = withAdmin(async ({ req, env }) => {
     console.error('knowledge create failed:', (err as { message?: string })?.message ?? 'unknown');
     return jsonErr('创建失败', 500);
   }
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

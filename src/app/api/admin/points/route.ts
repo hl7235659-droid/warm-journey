@@ -22,4 +22,4 @@ export const POST = withAdmin(async ({ req, env, auth }) => {
   await createPoint(env.DB, { ...parsed, created_by: auth.sub,
     admission: parsed.admission as AdmissionInfo });
   return Response.json({ ok: true, data: { message: '创建成功' } }, { status: 201 });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

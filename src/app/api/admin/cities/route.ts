@@ -23,4 +23,4 @@ export const POST = withAdmin(async ({ req, env }) => {
   } catch {
     return jsonErr('城市已存在', 409);
   }
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

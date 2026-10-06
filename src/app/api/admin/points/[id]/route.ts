@@ -16,7 +16,7 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { 
   await updatePoint(env.DB, id, parsed as Parameters<typeof updatePoint>[2]);
 
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });
 
 export const GET = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const point = await getPoint(env.DB, id);

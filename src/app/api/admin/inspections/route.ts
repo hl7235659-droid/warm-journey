@@ -33,4 +33,4 @@ export const POST = withAdmin(async ({ req, env, auth }) => {
     inspected_at: parsed.inspected_at ?? Math.floor(Date.now() / 1000),
   });
   return Response.json({ ok: true, data: { message: '巡检记录已提交' } }, { status: 201 });
-}, { roles: ADMIN_ROLES });
+}, { roles: ADMIN_ROLES, active: true });

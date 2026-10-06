@@ -18,4 +18,4 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
   const { changes } = await updateCity(env.DB, id, parsed);
   if (changes === 0) return jsonErr('城市不存在', 404);
   return Response.json({ ok: true, data: { message: '更新成功' } });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

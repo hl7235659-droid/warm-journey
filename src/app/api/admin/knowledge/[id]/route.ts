@@ -22,7 +22,7 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, params: { id } }
   const { changes } = await updateKnowledge(env.DB, id, parsed);
   if (changes === 0) return jsonErr('条目不存在', 404);
   return Response.json({ ok: true });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });
 
 export const DELETE = withAdmin<{ id: string }>(async ({ env, params: { id } }) => {
   const bad = assertId(id);
@@ -31,4 +31,4 @@ export const DELETE = withAdmin<{ id: string }>(async ({ env, params: { id } }) 
   const { changes } = await deleteKnowledge(env.DB, id);
   if (changes === 0) return jsonErr('条目不存在', 404);
   return Response.json({ ok: true });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });

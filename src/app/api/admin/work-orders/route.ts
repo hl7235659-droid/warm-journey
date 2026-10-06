@@ -48,4 +48,4 @@ export const POST = withAdmin(async ({ req, env, auth }) => {
   }
 
   return Response.json({ ok: true, data: { message: '工单已创建', id: newId } }, { status: 201 });
-}, { roles: ROLES_CONTENT });
+}, { roles: ROLES_CONTENT, active: true });
