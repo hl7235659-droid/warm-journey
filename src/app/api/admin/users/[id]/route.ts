@@ -1,11 +1,11 @@
 import { updateAdmin, deleteAdmin } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, ROLES_SUPER } from '@/lib/http';
-import { ADMIN_ROLES } from '@/lib/types';
+import { ADMIN_ROLES, ADMIN_PASSWORD_RE, ADMIN_PASSWORD_HINT, BCRYPT_COST } from '@/lib/types';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
 const UpdateSchema = z.object({
-  password: z.string().min(6).max(64).optional(),
+  password: z.string().regex(ADMIN_PASSWORD_RE, ADMIN_PASSWORD_HINT).optional(),
   role: z.enum(ADMIN_ROLES).optional(),
   display_name: z.string().max(32).optional(),
 });
@@ -22,7 +22,7 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { 
   }
 
   const data: { password_hash?: string; role?: string; display_name?: string } = {};
-  if (parsed.password) data.password_hash = await bcrypt.hash(parsed.password, 10);
+  if (parsed.password) data.password_hash = await bcrypt.hash(parsed.password, BCRYPT_COST);
   if (parsed.role) data.role = parsed.role;
   if (parsed.display_name !== undefined) data.display_name = parsed.display_name;
 

@@ -5,7 +5,7 @@ import { useAdmin, useIsSuperAdmin } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';
 import type { AdminRole, AdminUser, ApiResponse } from '@/lib/types';
-import { ADMIN_ROLES, ADMIN_ROLE_LABELS } from '@/lib/types';
+import { ADMIN_ROLES, ADMIN_ROLE_LABELS, ADMIN_PASSWORD_RE, ADMIN_PASSWORD_HINT } from '@/lib/types';
 import { api, ACTION_ERR } from '@/lib/api-client';
 
 const BLANK = () => ({ username: '', password: '', role: 'inspector' as AdminRole, display_name: '' });
@@ -56,7 +56,7 @@ export default function AdminUsersPage() {
   async function submitReset(e: React.FormEvent) {
     e.preventDefault();
     if (!resetUser) return;
-    if (resetPwd.length < 6) { alert('密码至少 6 位'); return; }
+    if (!ADMIN_PASSWORD_RE.test(resetPwd)) { alert(`密码${ADMIN_PASSWORD_HINT}`); return; }
     setSaving(true);
     const j = await api(`/api/admin/users/${resetUser.id}`, {
       method: 'PUT',
@@ -160,7 +160,7 @@ export default function AdminUsersPage() {
                   placeholder="字母、数字、下划线" required />
               </div>
               <div className="field">
-                <label htmlFor="u-pwd">初始密码 *（至少 6 位）</label>
+                <label htmlFor="u-pwd">初始密码 *（{ADMIN_PASSWORD_HINT}）</label>
                 <input id="u-pwd" className="input" type="password" value={form.password}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required />
               </div>
@@ -194,7 +194,7 @@ export default function AdminUsersPage() {
             <h2 className="modal-title">为 {resetUser.username} 设置新密码</h2>
             <form onSubmit={submitReset} noValidate>
               <div className="field-lg">
-                <label htmlFor="r-pwd">新密码（至少 6 位）</label>
+                <label htmlFor="r-pwd">新密码（{ADMIN_PASSWORD_HINT}）</label>
                 <input id="r-pwd" className="input" type="password" autoComplete="new-password"
                   value={resetPwd} onChange={e => setResetPwd(e.target.value)} required autoFocus />
               </div>

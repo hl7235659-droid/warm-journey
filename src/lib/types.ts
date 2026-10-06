@@ -22,6 +22,14 @@ export const ID_RE = /^[a-z0-9]{4,32}$/;
 // 单张上传图片体积上限：客户端预检与服务端拒绝共用（文案里的 "5MB" 随此值同步）
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
+// 管理员口令强度：≥10 位且同时含字母与数字。建号、改密、create-admin 脚本同一口径。
+export const ADMIN_PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{10,64}$/;
+export const ADMIN_PASSWORD_HINT = '至少 10 位，且须同时包含字母与数字';
+
+// bcrypt cost 定在 10，不要"顺手"调高：bcryptjs 是纯 JS 实现，Workers 的 CPU 配额下
+// cost 12（约 4 倍耗时）会让登录直接撞墙钟超时——强度做在上面的口令策略里，不在哈希轮数上。
+export const BCRYPT_COST = 10;
+
 export interface ServicePoint {
   id: string;
   name: string;

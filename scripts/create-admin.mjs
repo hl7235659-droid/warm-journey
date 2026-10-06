@@ -25,15 +25,19 @@ if (!['super_admin', 'admin', 'inspector'].includes(role)) {
 }
 
 let password = env.ADMIN_PASSWORD || '';
+// 口令策略与 src/lib/types.ts 的 ADMIN_PASSWORD_RE / ADMIN_PASSWORD_HINT 同口径；
+// 本脚本用裸 node 跑，不引 TS 模块，故此处按字面重复一份（改一处须同步另一处）。
+const PWD_RE = /^(?=.*[A-Za-z])(?=.*\d).{10,64}$/;
+const PWD_HINT = '至少 10 位，且须同时包含字母与数字';
 if (!password) {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   // readline.question 会回显输入；如需避免，请改用 ADMIN_PASSWORD 环境变量
   console.log('提示：交互式输入会显示在屏幕上，共享环境请改用 ADMIN_PASSWORD 环境变量。');
-  password = await rl.question(`为「${username}」设置密码（至少 8 位）: `);
+  password = await rl.question(`为「${username}」设置密码（${PWD_HINT}）: `);
   rl.close();
 }
-if (password.length < 8) {
-  console.error('✗ 密码至少 8 位');
+if (!PWD_RE.test(password)) {
+  console.error(`✗ 密码${PWD_HINT}`);
   exit(1);
 }
 
@@ -47,6 +51,7 @@ for (const [name, value] of [['ADMIN_USERNAME', username], ['ADMIN_DISPLAY_NAME'
   }
 }
 
+// cost 维持 10：调高的代价是登录 CPU 超时，理由见 src/lib/types.ts 的 BCRYPT_COST
 const hash = bcrypt.hashSync(password, 10);
 const sql =
   `INSERT INTO admin_users (id, username, password_hash, role, display_name, created_at, updated_at) ` +
