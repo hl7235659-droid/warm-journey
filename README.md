@@ -2,7 +2,11 @@
 
 **外卖骑手服务点信息平台** — 帮助外卖骑手快速找到附近的休息点、充电站和服务设施。
 
-🌐 **在线访问**：https://warm-journey.pages.dev
+🌐 **在线访问**：https://warm-journey.hl7235659.workers.dev
+
+> 旧域名 `warm-journey.pages.dev`（批次 9 前的 Pages 部署）保留作回滚兜底，不再更新。
+> workers.dev 域名在国内需代理访问；若需绑定自有域名，在 Dashboard → Worker →
+> Settings → Domains & Routes 添加即可（域名须托管在同一 Cloudflare 账户）。
 
 ---
 
@@ -44,9 +48,11 @@
 
 - **前端框架**：Next.js 15 (App Router) + React 19
 - **样式**：CSS 自定义属性（朱砂·宣纸·描金 国风设计系统）+ gpt-image-2 生成素材
-- **运行时**：Cloudflare Workers (Edge Runtime)
+- **运行时**：Cloudflare Workers（workerd，`nodejs_compat`）
+- **适配器**：[@opennextjs/cloudflare](https://opennext.js.org/cloudflare)（Next.js → Workers）
 - **数据库**：Cloudflare D1 (SQLite)
-- **部署平台**：Cloudflare Pages
+- **对象存储**：Cloudflare R2（上报/巡检照片）
+- **部署**：`wrangler deploy`（Workers + Static Assets）
 - **语言**：TypeScript
 
 ### 视觉设计（挑战杯路演风格）
@@ -61,12 +67,31 @@
 
 ---
 
+## 构建链历史（知识保全）
+
+2026-10 之前本项目用 `@cloudflare/next-on-pages`（已 deprecated）+ `vercel build` 部署到
+Cloudflare Pages，Windows 上需要三层猴补丁（symlink junction 降级 / npm.cmd spawn 修补 /
+运行时守卫注入）才能出包。期间发生过两次生产事故，根因均出在这条链上：
+
+1. **2026-10-05 生产 500**：一次 `npm install` 把 next-on-pages 按 lockfile 降级回 1.13.10，
+   丢失 `__import_unsupported` 幂等守卫，Pages 同 isolate 内第二个起加载的路由全部
+   `Cannot redefine property` 500；
+2. **2026-10-06 首页 Not Found**：1.13.10 同时丢失 `/` → index 的路由映射，首页返回
+   200 + 纯文本 "Not Found"，其余页面正常，极具迷惑性。
+
+2026-10-06（批次 9）整体迁移到官方维护的 `@opennextjs/cloudflare`（Workers + Static
+Assets），`vercel`、next-on-pages、三层补丁、`.npmrc legacy-peer-deps` 全部退场。两次事故
+的完整取证与修复过程见 git 历史中的 `scripts/build-pages.cjs`（批次 9 前的最后版本）与
+《过度设计修复计划-2026-10-06.md》批次 1/9 回写。
+
+---
+
 ## 本地开发
 
 ### 环境要求
 
-- Node.js 18+
-- npm 或 pnpm
+- Node.js ≥ 22.6（`npm test` 依赖 `--experimental-strip-types`；wrangler 4 亦要求 node 22+）
+- npm
 
 ### 安装依赖
 
@@ -80,94 +105,90 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000
+`next dev` 由 `next.config.mjs` 里的 `initOpenNextCloudflareForDev()` 注入本地 Cloudflare
+bindings（D1/R2），数据落在 `.wrangler/` 下。访问 http://localhost:3000
+
+本地密钥（如 `JWT_SECRET`）写在根目录 `.dev.vars`（已被 .gitignore 忽略），格式：
+
+```
+JWT_SECRET=<任意随机串>
+```
 
 ### 数据库操作
 
-**创建本地数据库**
+本地库名 `warm-journey-db`（绑定写在 wrangler.toml，`--local` 即本地状态，无需真实建库）：
+
 ```bash
-npx wrangler d1 create warm-journey-dev --local
+npm run db:migrate      # 建表（schema.sql，全部 IF NOT EXISTS，可重放）
+npm run db:seed         # 基础示例数据（见下方「示例数据」）
+npm run db:seed:demo    # 演示客流（仅本地，见下方警告）
+
+# 查询
+npx wrangler d1 execute warm-journey-db --local --command "SELECT id,name FROM service_points"
 ```
 
-**运行迁移**
+### 测试
+
 ```bash
-npx wrangler d1 execute warm-journey-dev --local --file=src/lib/db/schema.sql
+npm test    # scripts/tests/ 下的单元测试（SSRF 白名单 / 分页钳制 / admission 结构化等）
 ```
 
-**填充测试数据**
-```bash
-npx wrangler d1 execute warm-journey-dev --local --file=src/lib/db/seed.sql
-```
+### 本地运行生产构建（Workers 运行时）
 
-**查询数据**
 ```bash
-npx wrangler d1 execute warm-journey-dev --local --command "SELECT * FROM service_points"
+npm run preview    # OpenNext 构建 + wrangler dev（与线上同运行时）
 ```
 
 ---
 
 ## 部署
 
-### Cloudflare Pages 部署
+### 部署到 Cloudflare Workers
 
-项目已配置自动部署到 Cloudflare Pages。
-
-**手动部署步骤**：
-
-1. **登录 Cloudflare**
-   ```bash
-   npx wrangler login
-   ```
-
-2. **构建项目**
-   ```bash
-   npm run build
-   ```
-
-3. **生成 Cloudflare Pages 格式**
-   ```bash
-   npm run pages:build
-   ```
-   > Windows 上必须走这个脚本：`vercel build` 用 `fs.symlink()` 去重 `.func` 目录，
-   > 未开开发者模式会报 EPERM 并中断，留下没有 `routes` 的 `config.json`，
-   > 导致所有动态路由（`/point/[id]`、`/api/**/[id]`）线上返回 404。
-   > `scripts/build-pages.cjs` 会把 symlink 降级为 junction（`mklink /J`）并校验路由非空。
-
-4. **部署**
-   ```bash
-   npm run pages:deploy
-   ```
-
-### 生产数据库设置
-
-**创建生产数据库**
 ```bash
-npx wrangler d1 create warm-journey-prod
+npx wrangler login        # 首次
+npm run deploy            # 预检 → 构建 → wrangler deploy
 ```
 
-**运行生产迁移**（新增表后重跑一次即可，全部 `IF NOT EXISTS` 幂等）
-```bash
-npx wrangler d1 execute <DATABASE_ID> --remote --file=src/lib/db/schema.sql
-npx wrangler d1 execute <DATABASE_ID> --remote --file=src/lib/db/seed.sql
-```
+`npm run deploy`（`scripts/deploy.cjs`）的预检会在部署前核实：
 
-**创建图片存储桶（上报/巡检照片）**
+1. 远程 D1 具备代码硬依赖的列与表（缺则提示先跑 `npm run db:migrate:safe:prod`）；
+2. Worker secret 里已有 `JWT_SECRET`。
+
+首次部署一个全新环境时的顺序：
+
 ```bash
+npx wrangler d1 create warm-journey-db          # 生产库（已有则跳过）
 npx wrangler r2 bucket create warm-journey-images
+# 把得到的 database_id 填进 wrangler.toml 的 [[d1_databases]]
+npm run db:migrate:safe:prod                    # 建表（幂等，只补缺失项）
+npx wrangler secret put JWT_SECRET              # 粘贴 openssl rand -hex 32 的输出
+npm run deploy
 ```
 
-**在 Cloudflare Dashboard 绑定数据库**：
-1. 打开 Workers & Pages → warm-journey → Settings → Functions
-2. D1 database bindings → 添加绑定
-3. Variable name: `DB`
-4. D1 database: 选择你的数据库
-（R2 绑定 `BUCKET` 已写在 wrangler.toml，pages deploy 会自动带上）
+D1/R2 绑定、Cron、静态资产目录都声明在 `wrangler.toml`，`wrangler deploy` 自动带上，
+无需在 Dashboard 手工配置。
 
-### AI 助手（小暖）环境变量（可选，Cloudflare Pages 后台 Settings → Environment variables）
+**回滚**：`npx wrangler rollback`（回到上一版本），或 Dashboard → Workers → warm-journey
+→ Deployments 秒级回退；另有旧 Pages 域名整站兜底（见文首）。
+
+### 生产数据库迁移
+
+```bash
+npm run db:migrate:safe:prod    # 探针式补列/补表，只执行缺失项，可重放
+```
+
+**不要**对生产库直接执行 `db:seed:demo`（demo 客流会污染在店人数与看板数字）；
+误跑后按固定主键 `demo000visit*` / `demofdbk*` 删除即可。
+
+### AI 助手（小暖）环境变量（可选）
+
+Worker 环境变量配置：Dashboard → Workers → warm-journey → Settings → Variables
+（或对敏感值用 `npx wrangler secret put`）。BYOK 优先：用户在悬浮窗自带 Key 时不消耗下表配置。
 
 | 变量 | 用途 | 必需 |
 |---|---|---|
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 演示兜底提供商（用户未在悬浮窗配置时的服务器端兜底，如 `https://api.deepseek.com/v1` / key / `deepseek-chat`） | 推荐 |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 演示兜底提供商（用户未在悬浮窗配置时的服务器端兜底，如 `https://api.deepseek.com/v1` / key / `deepseek-chat`；KEY 建议走 secret） | 推荐 |
 | `AI_ALLOWED_HOSTS` | BYOK 出站主机名白名单追加（逗号分隔）；默认只允许 `src/lib/ai/fetch.ts` 内置的主流 OpenAI 兼容域名 | 可选 |
 
 天气不需要任何密钥：`/api/ai/context` 走 wttr.in 免费端点，取不到只少一段上下文文字。
@@ -185,38 +206,45 @@ Key 仅存浏览器 localStorage，永不提交服务器存储。无任何 Key �
 | `/api/ai/chat` 全站 | 每日 3000 次 | **仅约束服务端 `AI_*` 密钥转发的请求**；用户自带 Key（BYOK）烧自己的额度，不占全站计数 |
 | 其余 `/api/ai/*` 与各写接口 | 各自独立计数 | 如上报每 IP 每小时 20 条、入店码/预约查询每 IP 每分钟 20 次 |
 
-### 数据周期清理
+### 数据周期清理（Cron，已自动化）
 
-`uploads`（上传台账）与 `ai_rate`（限流计数）只增不减，靠 `src/lib/db/gc.sql` 回收：
+`uploads`（上传台账，保留 30 天）与 `ai_rate`（限流计数，保留 7 天）由 Worker 的
+Cron Trigger 每日 UTC 03:00 自动清理（`src/worker.ts` 的 scheduled handler，同时兜底跑
+一次过期预约/超时在店的懒清理）。`wrangler.toml [triggers]` 随部署自动注册，无需手工调度。
+
+`ai_rate` 另有内联的概率式摊销清理（每次计数 1/60 概率删 7 天前的行），与 Cron 互补。
+R2 里未被引用的图片对象需另配生命周期规则（Bucket → Lifecycle rules，对 `img/` 前缀
+设置 30 天过期）。
+
+### 部署后冒烟
 
 ```bash
-npm run db:gc         # 本地库
-npm run db:gc:prod    # 生产库：每周手工跑一次
+# 同一实例多路由连打，防同 isolate 跨路由冲突与"状态码对但内容错"
+node scripts/smoke-routes.cjs https://warm-journey.hl7235659.workers.dev
+# 国内直连 workers.dev 被墙时走代理：
+HTTPS_PROXY=http://127.0.0.1:7897 node scripts/smoke-routes.cjs https://warm-journey.hl7235659.workers.dev
 ```
-
-`ai_rate` 另有内联的概率式摊销清理（每次计数 1/60 概率删 7 天前的行），但**不能指望它**：
-低流量时段可能整天不触发。Pages 上挂的 next-on-pages 没有 `scheduled` handler，
-所以生产清理目前没有自动调度方，`db:gc:prod` 需要按周执行（迁移到 OpenNext 后改配 Cron Trigger）。
-R2 里未被引用的图片对象另需生命周期规则，见 `gc.sql` 头部注释。
 
 ---
 
 ## 管理后台
 
-**默认账号**：
-- 用户名：`admin`
-- 密码：`admin123`
+没有默认账号：`seed.sql` 不含任何管理员。首个账号用脚本创建：
 
-⚠️ **安全提醒**：首次部署后请立即修改默认密码！
-
-**修改密码方法**：
 ```bash
-# 1. 生成新密码的 bcrypt hash（使用 Node.js）
+npm run admin:create            # 本地库
+npm run admin:create:prod       # 生产库（按提示输入用户名/密码/角色）
+```
+
+**修改密码**（表名是 `admin_users`；`super_admin` 是 role 值不是用户名）：
+
+```bash
+# 1. 生成 bcrypt hash
 node -e "console.log(require('bcryptjs').hashSync('你的新密码', 10))"
 
-# 2. 更新数据库
-npx wrangler d1 execute <DATABASE_ID> --remote --command \
-  "UPDATE admins SET password_hash = '<新的hash>' WHERE username = 'super_admin'"
+# 2. 按用户名更新
+npx wrangler d1 execute warm-journey-db --remote \
+  --command "UPDATE admin_users SET password_hash = '<新的hash>' WHERE username = '<用户名>'"
 ```
 
 ---
@@ -226,6 +254,7 @@ npx wrangler d1 execute <DATABASE_ID> --remote --command \
 ```
 warm-journey/
 ├── src/
+│   ├── worker.ts                # Worker 入口：复用 OpenNext fetch + scheduled(Cron GC)
 │   ├── app/                     # Next.js App Router 路由
 │   │   ├── page.tsx             # C 端首页（slide 版式）
 │   │   ├── point/[id]/          # 服务点详情 / 上报
@@ -237,15 +266,21 @@ warm-journey/
 │   ├── lib/
 │   │   ├── ai/                  # AI 基础库（prompt 组装/降级/action 协议/天气/截断）
 │   │   ├── covers.ts            # 站点封面图映射（实景 / 插画占位）
-│   │   ├── db/                  # 数据库 schema 和 seed
+│   │   ├── db/                  # 数据库访问层 / schema / seed
 │   │   └── types.ts             # TypeScript 类型定义
 │   └── app/globals.css          # 全局样式（国风设计系统 + AI 悬浮窗 + 动效）
 ├── public/
+│   ├── _headers                 # 静态资产层缓存规则（_next/static、images 长缓存）
 │   └── images/                  # 生成视觉素材与驿站实景照
 ├── scripts/
-│   └── patch-vercel-funcs.cjs   # Windows 符号链接修复脚本
-├── wrangler.toml                # Cloudflare 配置
-└── next.config.mjs              # Next.js 配置
+│   ├── deploy.cjs               # 部署入口（预检 + 构建 + wrangler deploy）
+│   ├── migrate.cjs              # 探针式迁移（本地/生产，只补缺失项）
+│   ├── create-admin.mjs         # 管理员建号
+│   ├── smoke-routes.cjs         # 多路由冒烟（支持 HTTPS_PROXY）
+│   └── tests/                   # 单元测试
+├── open-next.config.ts          # OpenNext 适配器配置
+├── wrangler.toml                # Worker 配置（绑定/Cron/资产目录）
+└── next.config.mjs              # Next.js 配置（含 dev bindings 注入）
 ```
 
 ---
@@ -262,10 +297,11 @@ warm-journey/
 - `point_confirms` — 骑手「信息无误」确认
 - `visits` — 预约/入店记录（reserved→in_store→completed，预约 2 小时过期）
 - `visit_feedback` — 离店满意度反馈（星级/支持标签/建议，一次 visit 一条）
+- `uploads` — 上传台账（R2 key 记账，Cron 30 天回收）
 - `cities` — 开通城市（筛选 + 地图视野中心）
 - `admin_users` — 管理员账户（super_admin / admin / inspector）
 - `ai_knowledge` — AI 助手业务知识库（权益政策/求助渠道/FAQ/公告，管理端维护）
-- `ai_rate` — AI 接口频率限制（每 IP 每分钟窗口计数）
+- `ai_rate` — AI 接口频率限制（每 IP 每分钟窗口计数，Cron 7 天回收）
 
 详见 [src/lib/db/schema.sql](src/lib/db/schema.sql)
 
@@ -273,22 +309,15 @@ warm-journey/
 
 ## 开发笔记
 
-### Edge Runtime 要求
+### 运行时：不要声明 edge runtime
 
-页面与 API 路由都在 Cloudflare Pages（workerd）上运行，但声明位置只有一处是必需的：
+本项目跑在 Workers（workerd + `nodejs_compat`）上，OpenNext **不支持** `export const
+runtime = 'edge'`（构建直接失败）。路由不用声明任何 runtime——默认（nodejs）即是正确值。
 
-- `src/app/layout.tsx` 声明一次 `export const runtime = 'edge'`，Next.js 让**页面路由**从 layout 继承该段配置，各 `page.tsx` 不必重复写；
-- `src/app/api/**/route.ts` **各自声明**：route 段不属于页面，不继承 layout 的 runtime。
+### Windows 开发
 
-```typescript
-export const runtime = 'edge';
-```
-
-### Windows 开发注意事项
-
-Windows 下 `vercel build` 用符号链接去重 `.func` 目录，未开启开发者模式时会 EPERM 失败。
-统一用 `npm run pages:build`，它通过 `scripts/win-symlink-shim.cjs` 把 symlink 降级为
-目录 junction（`mklink /J`），无需管理员权限；`scripts/patch-vercel-funcs.cjs` 作为兜底修复。
+OpenNext 构建不走 `vercel build`，不碰 symlink，Windows 上无需任何补丁脚本
+（旧链的 `win-symlink-shim.cjs` 等已随批次 9 退场，见「构建链历史」）。
 
 ### 示例数据
 
@@ -308,17 +337,19 @@ npm run db:seed:demo   # 演示客流（本地库，会污染在店人数与看�
 
 ### 数据库访问
 
-在 Cloudflare Workers 环境中通过 `env.DB` 访问 D1：
+服务端代码统一用 OpenNext 的 `getCloudflareContext()` 拿 bindings（`env.DB` 即 D1）：
 
 ```typescript
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 export async function GET() {
-  const { env } = getRequestContext();
-  const result = await env.DB.prepare('SELECT * FROM service_points').all();
-  return Response.json(result);
+  const { env } = getCloudflareContext();
+  const points = await env.DB.prepare('SELECT id, name FROM service_points').all();
+  return Response.json({ ok: true, data: points });
 }
 ```
+
+管理端路由不必手写这行——`withAdmin()`（`src/lib/http.ts`）已统一注入 `env` 与鉴权。
 
 ---
 

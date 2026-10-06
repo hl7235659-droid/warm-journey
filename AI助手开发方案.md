@@ -349,7 +349,7 @@ interface ChatResponse {
 5. 日志：`console.error` 只记错误类型与状态码，**不记请求体/响应体**（含 key 与用户隐私）
 6. 频率限制：demo 期在 D1 记 `ai_rate(ip, window_start, count)`，每 IP 每分钟 20 次；超出返回友好文案
 7. AI 输出展示一律标注「AI 生成，仅供参考」；法律/心理类强制附「建议咨询专业机构」
-8. `tsc --noEmit` 必须过；部署走 `npm run pages:build && npm run pages:deploy`（先 `NODE_OPTIONS=""`）
+8. `tsc --noEmit` 必须过；部署走 `npm run deploy`（OpenNext Workers，见 README「部署」）
 
 ---
 
@@ -416,11 +416,11 @@ interface ChatResponse {
 
 ### 上线前待办（代码外的事）
 
-1. `npm run db:migrate:prod` —— 新增 ai_knowledge / ai_rate 两表（schema 幂等）
-2. `npm run db:seed:prod` —— 写入知识库初始条目（工会热线/法援渠道）
-3. Pages 环境变量：`AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`（演示兜底）、`WEATHER_API_KEY`（可选）
-4. `NODE_OPTIONS="" npm run pages:build && npm run pages:deploy`
-5. 线上冒烟：有 key 问答 / 拔 key 降级 / 问小暖带站点上下文 / AI 周报 各验一次
+1. `npm run db:migrate:safe:prod` —— 新增 ai_knowledge / ai_rate 两表（schema 幂等）
+2. 知识库初始条目已并入 `npm run db:seed` 可重放的 INSERT（如需单独执行：`npx wrangler d1 execute warm-journey-db --remote --file=src/lib/db/seed.sql`）
+3. Worker 环境变量：`AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`（演示兜底，见 README 配置方式）
+4. `npm run deploy`
+5. 线上冒烟：有 key 问答 / 拔 key 降级 / 问小暖带站点上下文 / AI 周报 各验一次（`node scripts/smoke-routes.cjs <url>`）
 
 ### 已知边界（下一版再议）
 
