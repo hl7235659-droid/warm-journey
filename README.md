@@ -2,11 +2,12 @@
 
 **外卖骑手服务点信息平台** — 帮助外卖骑手快速找到附近的休息点、充电站和服务设施。
 
-🌐 **在线访问**：https://warm-journey.hl7235659.workers.dev
+🌐 **在线访问**：https://warm-journey.hosha-room.cloud（自有域，国内可直连）
 
+> 备用入口 `https://warm-journey.hl7235659.workers.dev`（国内需代理）；
 > 旧域名 `warm-journey.pages.dev`（批次 9 前的 Pages 部署）保留作回滚兜底，不再更新。
-> workers.dev 域名在国内需代理访问；若需绑定自有域名，在 Dashboard → Worker →
-> Settings → Domains & Routes 添加即可（域名须托管在同一 Cloudflare 账户）。
+> 自定义域配置在 `wrangler.toml` 的 `routes`（Workers Custom Domains，
+> 自动管理 DNS 与证书），如需更换域名改 pattern 后 `npx wrangler deploy` 即可。
 
 ---
 
@@ -220,8 +221,8 @@ R2 里未被引用的图片对象需另配生命周期规则（Bucket → Lifecy
 
 ```bash
 # 同一实例多路由连打，防同 isolate 跨路由冲突与"状态码对但内容错"
-node scripts/smoke-routes.cjs https://warm-journey.hl7235659.workers.dev
-# 国内直连 workers.dev 被墙时走代理：
+node scripts/smoke-routes.cjs https://warm-journey.hosha-room.cloud
+# 访问 workers.dev 备用入口时（国内被墙）走代理：
 HTTPS_PROXY=http://127.0.0.1:7897 node scripts/smoke-routes.cjs https://warm-journey.hl7235659.workers.dev
 ```
 

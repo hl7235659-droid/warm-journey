@@ -6,6 +6,13 @@ main = "src/worker.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
+# 自定义域（Workers Custom Domains：自动建 DNS + 证书，国内可直连）。
+# 配 routes 后 wrangler 默认关闭 workers.dev，显式保留作备用入口（代理场景/兜底）。
+workers_dev = true
+routes = [
+  { pattern = "warm-journey.hosha-room.cloud", custom_domain = true }
+]
+
 # 台账 GC（uploads 30 天 / ai_rate 7 天 + 过期 visit 兜底），见 src/worker.ts
 [triggers]
 crons = ["0 3 * * *"]
