@@ -32,6 +32,7 @@ npm-debug.log*
 next-env.d.ts
 
 # agent / artifacts
+.workbuddy/
 .workbuddy-ai/
 /warm-journey-deploy.tar.gz
 
