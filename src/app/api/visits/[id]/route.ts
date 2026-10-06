@@ -4,6 +4,17 @@ import { getClientIp } from '@/lib/http';
 import { sanitizeVisit } from '@/lib/visit-sanitize';
 
 // 查询 visit（入店确认页用，id 即凭证）：GET /api/visits/[id]
+//
+// 设计取舍（L12 固化，勿当漏洞"修复"）：此处不做会话鉴权，凭证就是 URL 里的
+// visit id——店家扫的入店二维码本来就是 /checkin/{id}?c={码}，id 在产品上就是
+// 要出示给对方的。其安全性靠三重缓解兜底，缺一不可，请勿单独删除其中一层：
+//   1. id 不可枚举：genId 取 crypto.getRandomValues 8 字节（64bit）随机，
+//      无法像自增 id 那样被批量遍历；
+//   2. 限流兜底：下方 20 次/分/IP，把慢速猜解压到不经济；
+//   3. 响应脱敏：sanitizeVisit 剥离 rider_token / created_ip / checkin_code
+//      （rider_token 只留前 6 位供辨认），拿到响应也冒充不了骑手。
+// 另外"改状态"还有第二因子：POST checkin 必须对上二维码携带的一次性入店码
+// （见 checkin/route.ts，10 次/分/IP），仅凭 id 无法远程确认入店。
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { env } = getCloudflareContext();
 
