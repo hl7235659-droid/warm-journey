@@ -29,8 +29,10 @@ const GOOGLE_FONTS_FILES = "https://fonts.gstatic.com";
 
 const CSP_POLICY = [
   "default-src 'self'",
-  // Next 水合脚本与国风版式的内联样式在产物里就是 inline 的，去掉即白屏
-  "script-src 'self' 'unsafe-inline'",
+  // Next 水合脚本与国风版式的内联样式在产物里就是 inline 的，去掉即白屏。
+  // cloudflareinsights 不在仓库里：它是 Cloudflare 后台 Web Analytics(RUM) 往 HTML 里
+  // 注入的 beacon.min.js，观察期唯一命中的违规就是它——不放开则转 enforce 后统计静默断掉。
+  `script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com`,
   `style-src 'self' 'unsafe-inline' ${GOOGLE_FONTS_CSS}`,
   `font-src 'self' data: ${GOOGLE_FONTS_FILES}`,
   // data: 给二维码兜底（见 src/components/qr.tsx）；https: 给 R2 图片与外链封面
