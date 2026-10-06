@@ -11,7 +11,7 @@ import { expireStaleVisits } from "./lib/db";
 
 // 台账清理（原 src/lib/db/gc.sql 的两条 DELETE 内联于此，单一来源）：
 //  - uploads：保留 30 天（上报引用图片的最长合理窗口远小于此）
-//  - ai_rate：保留 7 天，与 db/index.ts checkRateLimit 内联清理同窗口
+//  - ai_rate：保留 7 天，与 db/rate-limit.ts checkRateLimit(s) 内联清理同窗口
 //    （两处窗口必须一致，否则一边删一边留）
 const GC_UPLOADS = "DELETE FROM uploads WHERE created_at < unixepoch() - 30 * 86400";
 const GC_AI_RATE = "DELETE FROM ai_rate WHERE window_start < unixepoch() - 7 * 86400";

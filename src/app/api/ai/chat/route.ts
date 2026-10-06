@@ -1,7 +1,8 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { z } from 'zod';
 import {
-  getPoint, getOccupancy, getPointFeedbackSummary, searchKnowledge, checkRateLimit,
+  getPoint, getOccupancy, getPointFeedbackSummary, searchKnowledge,
+  checkRateLimits, type RateLimitCheck,
 } from '@/lib/db';
 import { matchSiteHelp } from '@/lib/ai/site-help';
 import { buildMessages, type PointPromptInfo } from '@/lib/ai/prompt';
@@ -79,16 +80,36 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonErr('参数验证失败', 422);
   const input = parsed.data;
 
+  // 提供商解析（纯计算不碰库）提前到限流之前：全站日额只拦"烧服务端 Key"的请求，
+  // 先知道 usesServerKey 才能把三条限额合并进同一次 batch 往返（7-2）。
+  // BYOK 地址非法仍是 422 原文案，只是不再消耗 per-IP 计数。
+  const resolved = resolveProvider(input.provider, env);
+  if (!resolved.ok) return jsonErr(resolved.message, 422);
+  const provider = resolved.provider;
+
+  // 限流一次往返（7-2）：每 IP 每分钟 20 次（README 承诺口径，双窗口滑动）+ 每 IP 每日 200 次；
+  // 全站日额（3000/日）只拦"烧服务端 Key"的请求——BYOK 烧用户自己的 Key，不进这个 batch，
+  // 既不该被它拦也不该消耗它。判定仍按 分钟 → 日 → 全站 的优先级依次短路。
+  // 已知代价：服务端 Key 请求即使被 per-IP 限额拒绝，日额也已 +1（合批无法按前序结果条件
+  // 计数）；日额本就是软闸门，正常转发的流量同样计数，正常使用无感。
   const ip = getClientIp(req);
-  // 限流两条，都在转发前拦：每 IP 每分钟 20 次（README 承诺口径，双窗口滑动）+ 每 IP 每日 200 次。
-  // 全站日额不在这里：它只拦"烧服务端 Key"的请求，见下面提供商解析之后的 usesServerKey 分支。
-  const allowed = await checkRateLimit(env.DB, `chat:${ip}`, { limit: 20, windowSec: 60 });
-  if (!allowed) {
+  const checks: RateLimitCheck[] = [
+    { key: `chat:${ip}`, limit: 20, windowSec: 60 },
+    { key: `chat:daily:${ip}`, limit: 200, windowSec: 86400 },
+  ];
+  if (provider?.usesServerKey) {
+    const day = Math.floor(Date.now() / 86400_000);
+    checks.push({ key: `chat:global:${day}`, limit: GLOBAL_DAILY_LIMIT, windowSec: 86400 });
+  }
+  const verdicts = await checkRateLimits(env.DB, checks);
+  if (!verdicts[0]) {
     return jsonErr('小暖有点忙，请一分钟后再试～', 429);
   }
-  const dailyAllowed = await checkRateLimit(env.DB, `chat:daily:${ip}`, { limit: 200, windowSec: 86400 });
-  if (!dailyAllowed) {
+  if (!verdicts[1]) {
     return jsonErr('今日的对话额度已用完，请明天再来～', 429);
+  }
+  if (provider?.usesServerKey && !verdicts[2]) {
+    return jsonErr('今天的小暖太忙了，请明天再来～', 429);
   }
 
   const history = normalizeMessages(input.messages);
@@ -103,19 +124,16 @@ export async function POST(req: Request) {
   const siteHelp = audience === 'admin'
     ? []
     : matchSiteHelp(lastUser.content, 3);
-  let knowledge: Awaited<ReturnType<typeof searchKnowledge>> = [];
-  if (audience === 'rider') {
-    try {
-      knowledge = await searchKnowledge(env.DB, lastUser.content, { topN: 3 });
-    } catch (e) {
-      console.error('ai chat: knowledge search failed:', (e as { message?: string })?.message ?? 'unknown');
-    }
-  }
-
-  let pointInfo: PointPromptInfo | undefined;
-  if (input.pointId) {
-    pointInfo = await assemblePointInfo(env.DB, input.pointId);
-  }
+  // 预取并行（7-2）：知识检索与站点上下文互不依赖；各自失败仍静默降级为空值，不阻断对话
+  const [knowledge, pointInfo] = await Promise.all([
+    audience === 'rider'
+      ? searchKnowledge(env.DB, lastUser.content, { topN: 3 }).catch((e) => {
+          console.error('ai chat: knowledge search failed:', (e as { message?: string })?.message ?? 'unknown');
+          return [] as Awaited<ReturnType<typeof searchKnowledge>>;
+        })
+      : Promise.resolve([] as Awaited<ReturnType<typeof searchKnowledge>>),
+    input.pointId ? assemblePointInfo(env.DB, input.pointId) : Promise.resolve(undefined),
+  ]);
 
   const context = (input.context ?? undefined) as AiContext | undefined;
 
@@ -138,26 +156,13 @@ export async function POST(req: Request) {
     dataText: input.dataText,
   });
 
-  // ---------- 提供商解析：请求自带（BYOK）→ 环境变量 → 本地降级 ----------
+  // ---------- 提供商判定（解析已提前到限流前）→ 无可用提供商走本地降级 ----------
   // BYOK 仅走 https（validateBaseUrl 强制），受每 IP 的分钟/日额约束——它烧的是用户自己的
-  // Key，不占全站额度；服务端 AI_* 环境变量兜底另外受全站日额约束（usesServerKey 分支）。
-  const resolved = resolveProvider(input.provider, env);
-  if (!resolved.ok) return jsonErr(resolved.message, 422);
-  const provider = resolved.provider;
+  // Key，不占全站额度；服务端 AI_* 环境变量兜底另外受全站日额约束（上面的 usesServerKey 分支）。
   if (!provider) {
     // 无任何可用提供商 → 本地降级
     const fb = localFallback(lastUser.content, context, pointInfo, fallbackArgs);
     return localResponse(fb.text, fb.action);
-  }
-
-  // 全站每日总量：分布式 IP / IPv6 轮换无法线性放大服务端 Key 消耗。
-  // 只有真正会用服务端 Key 转发的请求才计数，BYOK 请求既不该被它拦、也不该消耗它。
-  if (provider.usesServerKey) {
-    const day = Math.floor(Date.now() / 86400_000);
-    const globalAllowed = await checkRateLimit(env.DB, `chat:global:${day}`, { limit: GLOBAL_DAILY_LIMIT, windowSec: 86400 });
-    if (!globalAllowed) {
-      return jsonErr('今天的小暖太忙了，请明天再来～', 429);
-    }
   }
 
   // ---------- 远端转发 ----------
