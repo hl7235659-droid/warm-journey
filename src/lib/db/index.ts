@@ -4,6 +4,7 @@ import type {
   KnowledgeCategory, ReportCategory, ReportStatus,
 } from '@/lib/types';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
+import { likeTerm } from '@/lib/like-term';
 
 // ---------------------------------------------------------------------------
 // Service Points
@@ -19,10 +20,14 @@ export async function listPoints(
 
   if (city) { wheres.push('city = ?'); bindings.push(city); }
   if (status) { wheres.push('status = ?'); bindings.push(status); }
-  if (q) { wheres.push('(name LIKE ? OR address LIKE ?)'); bindings.push(`%${q}%`, `%${q}%`); }
-  // 服务标签筛选：services 列为 JSON 数组文本，按完整标签匹配（过滤通配符防注入）
+  // 检索词与 service 标签同口径归一（见 @/lib/like-term）：不过滤的话 q="%" 等于全表命中
+  if (q) {
+    const qq = likeTerm(q);
+    if (qq) { wheres.push('(name LIKE ? OR address LIKE ?)'); bindings.push(`%${qq}%`, `%${qq}%`); }
+  }
+  // 服务标签筛选：services 列为 JSON 数组文本，按完整标签匹配
   if (service) {
-    const tag = service.replace(/[%_"\\]/g, '').trim();
+    const tag = likeTerm(service);
     if (tag) { wheres.push("services LIKE ?"); bindings.push(`%"${tag}"%`); }
   }
 
