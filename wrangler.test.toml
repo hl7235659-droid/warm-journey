@@ -1,0 +1,21 @@
+# 批次 4 测试地基专用配置（S3）。
+# 与生产 wrangler.toml 同绑定名（DB / BUCKET），但 main 指向 tests/workers/entry.ts，
+# 不引用 .open-next 构建产物——`npm run test:workers` 因此不需要先 build。
+name = "warm-journey-test"
+main = "tests/workers/entry.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "warm-journey-test-db"
+database_id = "local-test"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "warm-journey-test-images"
+
+# 测试密钥：只在本地 workerd 实例内存在，绝不与生产 JWT_SECRET 同值。
+# auth.ts 的 fail-loud 分支要测"缺密钥"时，用例里显式传 { JWT_SECRET: undefined }。
+[vars]
+JWT_SECRET = "warm-journey-test-only-secret"

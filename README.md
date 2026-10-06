@@ -131,8 +131,13 @@ npx wrangler d1 execute warm-journey-db --local --command "SELECT id,name FROM s
 ### 测试
 
 ```bash
-npm test    # scripts/tests/ 下的单元测试（SSRF 白名单 / 分页钳制 / admission 结构化等）
+npm test             # scripts/tests/ 下的纯函数单测（SSRF 白名单 / 分页钳制 / admission 结构化等）
+npm run test:workers # tests/workers/ 下跑在真实 workerd + 真实 D1 的用例（withAdmin 守卫 / visit 状态机 / 容量并发 / 出口脱敏 / AI 降级）
 ```
+
+`test:workers` 用 vitest-pool-workers，绑定来自 `wrangler.test.toml`（与生产同名的 DB / BUCKET，
+但 main 指向 `tests/workers/entry.ts`，因此**不需要先跑 OpenNext 构建**）；每个测试文件一份独立库，
+建库直接读 `src/lib/db/schema.sql`，所以 schema 改了不必迁移测试夹具。
 
 ### 本地运行生产构建（Workers 运行时）
 
@@ -305,9 +310,12 @@ warm-journey/
 │   ├── migrate.cjs              # 探针式迁移（本地/生产，只补缺失项）
 │   ├── create-admin.mjs         # 管理员建号
 │   ├── smoke-routes.cjs         # 多路由冒烟（支持 HTTPS_PROXY）
-│   └── tests/                   # 单元测试
+│   └── tests/                   # 单元测试（纯函数，node --test）
+├── tests/
+│   └── workers/                 # workerd + 真实 D1 回归用例（见 npm run test:workers）
 ├── open-next.config.ts          # OpenNext 适配器配置
 ├── wrangler.toml                # Worker 配置（绑定/Cron/资产目录）
+├── wrangler.test.toml           # 测试 Worker 配置（同名绑定，不依赖构建产物）
 └── next.config.mjs              # Next.js 配置（含 dev bindings 注入）
 ```
 
