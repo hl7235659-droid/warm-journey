@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkoutVisit } from '@/lib/db';
 import { readJson, isResponse, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const CheckoutSchema = z.object({
   rider_token: RiderTokenSchema,
@@ -11,7 +9,7 @@ const CheckoutSchema = z.object({
 
 // 确认离店（骑手本人，rider_token 校验）：POST /api/visits/[id]/checkout
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const parsed = await readJson(req, CheckoutSchema);

@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkRateLimit, recordUpload } from '@/lib/db';
 import { getClientIp, jsonErr } from '@/lib/http';
 import { MAX_UPLOAD_BYTES } from '@/lib/types';
-
-export const runtime = 'edge';
 
 const EXT_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -29,7 +27,7 @@ function detectImageType(bytes: Uint8Array): string | null {
 // 公开图片上传（上报 / 巡检共用）：POST multipart/form-data, field = file
 // 防滥用三件套：每 IP 限流（10 次/小时）+ 魔数校验 + 台账记账（上报引用时校验归属）。
 export async function POST(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const ip = getClientIp(req);
 
   if (!(await checkRateLimit(env.DB, `upload:${ip}`, { limit: 10, windowSec: 3600 }))) {

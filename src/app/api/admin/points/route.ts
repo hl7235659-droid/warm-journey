@@ -3,8 +3,6 @@ import { withAdmin, readJson, isResponse, pageParams, ROLES_CONTENT } from '@/li
 import { PointCreateSchema } from '@/lib/point-schema';
 import type { AdmissionInfo } from '@/lib/types';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 50);

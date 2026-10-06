@@ -3,8 +3,6 @@ import { withAdmin, readJson, isResponse, jsonErr, pageParams, ROLES_CONTENT } f
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ req, env }) => {
   const url = new URL(req.url);
   const { page, page_size } = pageParams(url.searchParams, 50);

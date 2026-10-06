@@ -2,9 +2,23 @@ name = "warm-journey"
 # 账户锁定：OAuth token 关联两个账户时，wrangler 非交互模式无法自选（2026-10-06
 # 部署预检因此误报"D1 缺列"）。warm-journey 项目在 Hl7235659@gmail.com 主账户下。
 account_id = "8ab156b372aaccebcd4be4267070ecaa"
+main = "src/worker.ts"
 compatibility_date = "2025-09-01"
-compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = ".vercel/output/static"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+# 台账 GC（uploads 30 天 / ai_rate 7 天 + 过期 visit 兜底），见 src/worker.ts
+[triggers]
+crons = ["0 3 * * *"]
+
+# Workers 静态资产（OpenNext 构建产物）
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# OpenNext 自引用（ISR / 重新验证路径走 Worker 自身）
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "warm-journey"
 
 [[d1_databases]]
 binding = "DB"
@@ -17,5 +31,5 @@ binding = "BUCKET"
 bucket_name = "warm-journey-images"
 
 # 仓库内禁止存放任何密钥。JWT_SECRET 等一律走：
-#   npx wrangler pages secret put JWT_SECRET
+#   npx wrangler secret put JWT_SECRET
 # 本地开发密钥放 .dev.vars（已在 .gitignore 中忽略）。

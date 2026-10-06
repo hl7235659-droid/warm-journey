@@ -2,8 +2,6 @@ import { getPoint, updatePoint, snapshotPoint } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { PointUpdateSchema } from '@/lib/point-schema';
 
-export const runtime = 'edge';
-
 // PUT 校验由 PointUpdateSchema（= PointCreateSchema.partial()）提供，与 POST 同源
 
 export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { id } }) => {

@@ -5,14 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "pages:build": "node scripts/build-pages.cjs",
-    "pages:deploy": "node scripts/deploy.cjs",
+    "preview": "opennextjs-cloudflare build && wrangler dev",
+    "deploy": "node scripts/deploy.cjs",
     "db:migrate": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/schema.sql",
     "db:migrate:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/schema.sql",
     "db:migrate:safe": "node scripts/migrate.cjs",
     "db:migrate:safe:prod": "node scripts/migrate.cjs --remote",
-    "db:gc": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/gc.sql",
-    "db:gc:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/gc.sql",
     "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql",
     "db:seed:demo": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed-demo.sql",
     "test": "node --experimental-strip-types --test \"scripts/tests/*.test.mjs\"",
@@ -20,23 +18,24 @@
     "admin:create:prod": "node scripts/create-admin.mjs --remote"
   },
   "dependencies": {
-    "@cloudflare/next-on-pages": "1.13.16",
     "bcryptjs": "2.4.3",
     "jose": "^5.10.0",
-    "next": "15.3.5",
+    "next": "15.5.27",
     "qrcode-generator": "^2.0.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250717.0",
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "@opennextjs/cloudflare": "^1.20.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.29",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "esbuild": "^0.25.12",
+    "rclone.js": "^0.6.6",
     "typescript": "^5.8.3",
-    "vercel": "62.2.0",
     "wrangler": "^4.19.0"
   }
 }

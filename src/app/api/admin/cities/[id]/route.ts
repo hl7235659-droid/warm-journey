@@ -2,8 +2,6 @@ import { updateCity } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 const UpdateSchema = z.object({
   name: z.string().min(1).max(20).optional(),
   center_lat: z.number().min(-90).max(90).optional(),

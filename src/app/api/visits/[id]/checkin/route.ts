@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkinVisit, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const CheckinSchema = z.object({
   code: z.string().trim().regex(/^[0-9a-z]{10}$/, '入店码格式不符'),
@@ -13,7 +11,7 @@ const CheckinSchema = z.object({
 // 凭证 = 二维码携带的一次性入店码：只转发/泄漏 visit id 无法远程确认入店。
 // 响应绝不下发 rider_token / checkin_code / created_ip。
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 防扫库：每 IP 每分钟 10 次
   if (!(await checkRateLimit(env.DB, `checkin:${getClientIp(req)}`, { limit: 10, windowSec: 60 }))) {

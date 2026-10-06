@@ -2,8 +2,6 @@ import { listWorkOrders, createWorkOrder, updateReport } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, pageParams, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 20);

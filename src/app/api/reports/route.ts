@@ -1,10 +1,8 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { createReport, getPoint, maybeAutoCreateWorkOrder, checkRateLimit, filterOwnedUploads } from '@/lib/db';
 import { readJson, isResponse, getClientIp } from '@/lib/http';
 import { REPORT_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const ReportSchema = z.object({
   point_id: z.string().min(1),
@@ -15,7 +13,7 @@ const ReportSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 上报频控：每 IP 每小时 20 条
   const ip = getClientIp(req);

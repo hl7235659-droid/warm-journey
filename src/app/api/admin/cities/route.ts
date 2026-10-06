@@ -2,8 +2,6 @@ import { listCities, createCity } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ env }) => {
   const cities = await listCities(env.DB);
   return Response.json({ ok: true, data: cities });

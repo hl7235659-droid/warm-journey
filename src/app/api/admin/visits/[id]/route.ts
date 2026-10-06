@@ -1,8 +1,6 @@
 import { checkoutVisit } from '@/lib/db';
 import { withAdmin, jsonErr, ROLES_CONTENT } from '@/lib/http';
 
-export const runtime = 'edge';
-
 // 管理端强制离店：影响骑手占用状态，限管理员及以上。
 // 该 PUT 只有"强制离店"一种语义，故无 body——此前 `action: z.literal('force_checkout')`
 // 的单值判别式只会让调用方硬编码一个没有第二种取值的字段。

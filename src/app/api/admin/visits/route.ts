@@ -1,8 +1,6 @@
 import { listVisits } from '@/lib/db';
 import { withAdmin, pageParams } from '@/lib/http';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 50);

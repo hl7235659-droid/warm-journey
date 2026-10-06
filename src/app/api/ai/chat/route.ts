@@ -1,4 +1,4 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { z } from 'zod';
 import {
   getPoint, getOccupancy, getPointFeedbackSummary, searchKnowledge, checkRateLimit,
@@ -13,8 +13,6 @@ import { requireAdmin } from '@/lib/auth';
 import { getClientIp, jsonErr } from '@/lib/http';
 import { STATUS_LABELS } from '@/lib/types';
 import type { AiContext, AiAction, ChatResponse } from '@/lib/ai/types';
-
-export const runtime = 'edge';
 
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -62,7 +60,7 @@ function localResponse(text: string, action?: ChatResponse['action']): Response 
 
 // POST /api/ai/chat
 export async function POST(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 管理端受众（AI 周报等）必须先过管理员鉴权
   let body: unknown;

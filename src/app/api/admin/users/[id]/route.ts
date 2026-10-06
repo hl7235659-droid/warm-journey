@@ -4,8 +4,6 @@ import { ADMIN_ROLES } from '@/lib/types';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
-export const runtime = 'edge';
-
 const UpdateSchema = z.object({
   password: z.string().min(6).max(64).optional(),
   role: z.enum(ADMIN_ROLES).optional(),

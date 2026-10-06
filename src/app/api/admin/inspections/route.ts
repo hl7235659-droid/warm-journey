@@ -3,8 +3,6 @@ import { withAdmin, readJson, isResponse, jsonErr, pageParams } from '@/lib/http
 import { ADMIN_ROLES } from '@/lib/types';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ req, env }) => {
   const sp = new URL(req.url).searchParams;
   const { page, page_size } = pageParams(sp, 20);

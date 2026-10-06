@@ -4,11 +4,14 @@
 # next.js
 /.next/
 
-# production builds
-/.vercel/
-
 # cloudflare
 /.wrangler/
+
+# OpenNext 构建产物
+/.open-next/
+
+# 旧构建链残留（批次 10 磁盘清理时整目录删除后本行移除）
+/.vercel/
 
 # misc
 .DS_Store

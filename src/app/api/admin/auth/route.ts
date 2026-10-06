@@ -1,11 +1,9 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getAdminByUsername, updateLastLogin, checkRateLimit } from '@/lib/db';
 import { signToken } from '@/lib/auth';
 import { readJson, isResponse, getClientIp, jsonErr } from '@/lib/http';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-
-export const runtime = 'edge';
 
 const LoginSchema = z.object({
   username: z.string().min(1).max(64),
@@ -13,7 +11,7 @@ const LoginSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 登录频控：每 IP 5 分钟内最多 10 次，阻断无限爆破
   const ip = getClientIp(req);

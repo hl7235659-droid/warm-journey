@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getPoint, reserveVisit, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const ReserveSchema = z.object({
   rider_token: RiderTokenSchema,
@@ -11,7 +9,7 @@ const ReserveSchema = z.object({
 
 // 预约进店：POST /api/points/[id]/reserve
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const { id } = await params;
 
   // 防脚本刷量占位：每 IP 每分钟 10 次（配合 DB 层同 IP 活跃预约数上限）

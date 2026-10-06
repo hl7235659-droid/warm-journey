@@ -3,8 +3,6 @@ import { withAdmin, readJson, isResponse, jsonErr, assertId, ROLES_CONTENT } fro
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 const UpdateSchema = z.object({
   category: z.enum(KNOWLEDGE_CATEGORIES).optional(),
   title: z.string().min(1).max(60).optional(),

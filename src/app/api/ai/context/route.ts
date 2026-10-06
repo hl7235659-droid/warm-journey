@@ -1,10 +1,8 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getNearbyPoints, checkRateLimit } from '@/lib/db';
 import { getClientIp } from '@/lib/http';
 import { fetchWeather } from '@/lib/ai/weather';
 import type { AiContext } from '@/lib/ai/types';
-
-export const runtime = 'edge';
 
 // Asia/Shanghai 固定时区格式化：'2026-10-05 14:30 周一'
 // 单实例 + 一次 formatToParts（此前每次请求现造两个 formatter）。
@@ -27,7 +25,7 @@ function nowShanghai(): string {
 // 聚合动态上下文：时间 + 天气 + 附近 3 个开放站点（含在店人数与 crowdHint）。
 // 天气失败不拖垮整体（内部 allSettled）；无 lat/lng 时只返回时间 + 天气（wttr.in 按 IP 定位）。
 export async function GET(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 匿名可触发服务端出站请求与 D1 写操作：必须限流
   if (!(await checkRateLimit(env.DB, `ctx:${getClientIp(req)}`, { limit: 20, windowSec: 60 }))) {

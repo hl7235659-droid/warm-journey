@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { createVisitFeedback, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const FeedbackSchema = z.object({
   rider_token: RiderTokenSchema,
@@ -14,7 +12,7 @@ const FeedbackSchema = z.object({
 
 // 离店满意度反馈：POST /api/visits/[id]/feedback
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const { id } = await params;
 
   // 防刷：每 IP 每分钟 10 次

@@ -2,8 +2,6 @@ import { getWorkOrder, updateWorkOrder } from '@/lib/db';
 import { withAdmin, readJson, isResponse, jsonErr, ROLES_CONTENT } from '@/lib/http';
 import { z } from 'zod';
 
-export const runtime = 'edge';
-
 const UpdateSchema = z.object({
   title:           z.string().min(1).max(100).optional(),
   description:     z.string().optional(),

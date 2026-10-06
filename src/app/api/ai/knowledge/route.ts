@@ -1,12 +1,10 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { listKnowledge } from '@/lib/db';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/types';
 
-export const runtime = 'edge';
-
 // 公开只读：已启用的知识条目（AI list_knowledge action 与前端展示用）
 export async function GET(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const url = new URL(req.url);
   const category = url.searchParams.get('category') ?? undefined;
 

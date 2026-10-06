@@ -1,0 +1,8 @@
+# Workers 静态资产层缓存（不经 Next 处理层，需在资产层声明）
+# 语义与迁移前 next.config.mjs headers() 的排除清单对齐：
+#   _next/static 与 images/ 长缓存，其余路由由 Worker 层按 no-store 处理。
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/images/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { cancelVisit } from '@/lib/db';
 import { readJson, isResponse, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const CancelSchema = z.object({
   rider_token: RiderTokenSchema,
@@ -11,7 +9,7 @@ const CancelSchema = z.object({
 
 // 取消预约（骑手本人）：POST /api/visits/[id]/cancel
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const { id } = await params;
 
   const parsed = await readJson(req, CancelSchema);

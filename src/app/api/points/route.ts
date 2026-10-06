@@ -1,12 +1,10 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { listPoints, getPointStats } from '@/lib/db';
 import { pageParams } from '@/lib/http';
 import type { NextRequest } from 'next/server';
 
-export const runtime = 'edge';
-
 export async function GET(req: NextRequest) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const sp = req.nextUrl.searchParams;
   const { page, page_size } = pageParams(sp, 20);
 

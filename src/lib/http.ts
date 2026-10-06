@@ -1,6 +1,6 @@
 // 公共路由层：鉴权收敛 + 请求解析 + 分页钳制 + 客户端 IP。
 // 所有 admin 路由必须经 withAdmin 包裹，从机制上杜绝漏写鉴权 / 角色不一致。
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { requireAdmin, requireActiveAdmin, requireRole, type AdminPayload } from '@/lib/auth';
 import { ID_RE } from '@/lib/types';
 import { z } from 'zod';
@@ -44,9 +44,9 @@ export function withAdmin<P = Record<string, string>>(
   opts: { roles?: readonly string[]; active?: boolean } = {},
 ) {
   return async (req: Request, routeCtx: RouteCtx<P>): Promise<Response> => {
-    // getRequestContext().env 的类型就是全局 CloudflareEnv（src/env.d.ts 声明合并），
+    // getCloudflareContext().env 的类型就是全局 CloudflareEnv（src/env.d.ts 声明合并），
     // 不需要再 as unknown as 一份影子接口
-    const { env } = getRequestContext();
+    const { env } = getCloudflareContext();
     const auth = opts.active
       ? await requireActiveAdmin(req, env)
       : await requireAdmin(req, env);

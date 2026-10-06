@@ -1,11 +1,9 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { z } from 'zod';
 import { checkRateLimit } from '@/lib/db';
 import { validateBaseUrl, chatCompletionsUrl } from '@/lib/ai/fetch';
 import { requireAdmin } from '@/lib/auth';
 import { getClientIp, jsonErr } from '@/lib/http';
-
-export const runtime = 'edge';
 
 const BodySchema = z.object({
   baseUrl: z.string().min(1).max(300),
@@ -16,7 +14,7 @@ const BodySchema = z.object({
 // POST /api/ai/test — 提供商连通性测试：发一条极小请求，要求模型只回四个字。
 // 限流每 IP 每分钟 10 次；服务端环境变量 Key 仅对已登录管理员开放（防匿名白嫖服务器配额）。
 export async function POST(req: Request) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   const ip = getClientIp(req);
   if (!(await checkRateLimit(env.DB, `aitest:${ip}`, { limit: 10, windowSec: 60 }))) {

@@ -4,8 +4,6 @@ import { ADMIN_ROLES } from '@/lib/types';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 
-export const runtime = 'edge';
-
 export const GET = withAdmin(async ({ env }) => {
   const users = await listAdmins(env.DB);
   return Response.json({ ok: true, data: users });

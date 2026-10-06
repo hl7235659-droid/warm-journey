@@ -595,7 +595,8 @@ export const AUTO_CHECKOUT_AFTER = 4 * 3600;
 // 只在**读路径**跑（getOccupancy / getRiderVisitState / getNearbyPoints / 管理端
 // listVisits / getAdminStats / reserveVisit 的容量闸门）——写路径每次白跑两条全表 UPDATE，
 // 而过期数据真正的危害是让这些数字虚高、被展示给用户。
-async function expireStaleVisits(db: D1Database) {
+// 另被 src/worker.ts 的 scheduled（Cron）handler 复用作低流量时段的兜底。
+export async function expireStaleVisits(db: D1Database) {
   const now = unixNow();
   await db.prepare(
     `UPDATE visits SET status = 'expired' WHERE status = 'reserved' AND reserved_at < ?`,

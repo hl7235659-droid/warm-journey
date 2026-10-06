@@ -1,9 +1,7 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { confirmPoint, getPoint, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
 import { z } from 'zod';
-
-export const runtime = 'edge';
 
 const ConfirmSchema = z.object({
   rider_token: RiderTokenSchema,
@@ -12,7 +10,7 @@ const ConfirmSchema = z.object({
 // 骑手一键确认「信息无误」：POST /api/points/[id]/confirm
 // 同一设备（rider_token）30 天内对同一点位只计一次，防循环刷量。
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
   const { id } = await params;
 
   if (!(await checkRateLimit(env.DB, `confirm:${getClientIp(req)}`, { limit: 10, windowSec: 60 }))) {

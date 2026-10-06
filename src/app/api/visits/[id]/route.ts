@@ -1,12 +1,10 @@
-import { getRequestContext } from '@cloudflare/next-on-pages';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getVisit, checkRateLimit } from '@/lib/db';
 import { getClientIp } from '@/lib/http';
 
-export const runtime = 'edge';
-
 // 查询 visit（入店确认页用，id 即凭证）：GET /api/visits/[id]
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { env } = getRequestContext();
+  const { env } = getCloudflareContext();
 
   // 与 checkin 同源凭证：同样限流，防止批量探测 visit id
   if (!(await checkRateLimit(env.DB, `visit:${getClientIp(req)}`, { limit: 20, windowSec: 60 }))) {
