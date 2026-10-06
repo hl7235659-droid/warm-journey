@@ -1,6 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getPoint, reserveVisit, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp, RiderTokenSchema } from '@/lib/http';
+import { sanitizeVisit } from '@/lib/visit-sanitize';
 import { z } from 'zod';
 
 const ReserveSchema = z.object({
@@ -36,5 +37,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if ('full' in result && result.full) {
     return Response.json({ ok: false, error: '当前名额已满，请稍后再试', code: 'FULL' }, { status: 409 });
   }
-  return Response.json({ ok: true, data: { visit: result.visit, created: result.created } }, { status: result.created ? 201 : 200 });
+  // 第六个 visit 出口同样是本人语境（决策 D5）：保留 checkin_code 给 VisitCard 渲染
+  // 入店二维码，但 created_ip 与完整 rider_token 不再随响应出门——浏览器拿得到自己提交的
+  // rider_token，多余下发只会多一份可被日志/扩展抓走的副本。
+  return Response.json(
+    { ok: true, data: { visit: result.visit ? sanitizeVisit(result.visit, { keepCode: true }) : null, created: result.created } },
+    { status: result.created ? 201 : 200 },
+  );
 }

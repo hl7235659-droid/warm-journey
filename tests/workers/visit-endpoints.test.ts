@@ -1,6 +1,7 @@
 // 4-4 · visit 出口的脱敏口径（锁定批次 1-3 的 M1/M5 收口，防新增端点再犯）
 // 纯函数口径已在 scripts/tests/visit-sanitize.test.mjs 锁死；这里锁的是"真路由真响应"：
 // 五个 visit 出口逐个调用，断言响应体里拿不到 rider_token / created_ip / checkin_code 的原值。
+// （reserve 与 admin 强制离店两个后收口的出口见 visit-exports.test.ts。）
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { POST as activePost } from '@/app/api/visits/active/route';
