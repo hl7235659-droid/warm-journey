@@ -29,9 +29,7 @@ CREATE TABLE IF NOT EXISTS service_points (
   services     TEXT NOT NULL DEFAULT '[]',   -- JSON array of service tags
   admission    TEXT NOT NULL DEFAULT '{}',   -- JSON: requirements, capacity, etc.
   notes        TEXT NOT NULL DEFAULT '',
-  qr_code_url  TEXT NOT NULL DEFAULT '',
   verified_at  INTEGER,
-  verified_by  TEXT REFERENCES admin_users(id),
   created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
   created_by   TEXT REFERENCES admin_users(id)
@@ -43,7 +41,6 @@ CREATE TABLE IF NOT EXISTS point_history (
   point_id      TEXT NOT NULL REFERENCES service_points(id) ON DELETE CASCADE,
   changed_by    TEXT REFERENCES admin_users(id),
   changed_at    INTEGER NOT NULL DEFAULT (unixepoch()),
-  change_summary TEXT NOT NULL DEFAULT '',
   snapshot      TEXT NOT NULL DEFAULT '{}'  -- full JSON snapshot of the row
 );
 
@@ -69,7 +66,6 @@ CREATE TABLE IF NOT EXISTS work_orders (
   description TEXT NOT NULL DEFAULT '',
   point_id    TEXT REFERENCES service_points(id) ON DELETE SET NULL,
   report_id   TEXT REFERENCES reports(id) ON DELETE SET NULL,
-  assigned_to TEXT REFERENCES admin_users(id),
   status      TEXT NOT NULL DEFAULT 'open'
                CHECK(status IN ('open','in_progress','resolved','closed')),
   priority    TEXT NOT NULL DEFAULT 'normal'

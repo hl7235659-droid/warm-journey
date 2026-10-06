@@ -13,11 +13,9 @@ export const PUT = withAdmin<{ id: string }>(async ({ req, env, auth, params: { 
   const parsed = await readJson(req, PointUpdateSchema);
   if (isResponse(parsed)) return parsed;
 
-  const { change_summary, ...data } = parsed;
-
-  // Snapshot before update for full history
-  await snapshotPoint(env.DB, id, auth.sub, change_summary ?? '管理员更新');
-  await updatePoint(env.DB, id, data as Parameters<typeof updatePoint>[2]);
+  // 先存变更前快照，再落新值（快照内容 = 更新前的行）
+  await snapshotPoint(env.DB, id, auth.sub);
+  await updatePoint(env.DB, id, parsed as Parameters<typeof updatePoint>[2]);
 
   return Response.json({ ok: true, data: { message: '更新成功' } });
 }, { roles: ROLES_CONTENT });

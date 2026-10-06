@@ -7,7 +7,6 @@ export const runtime = 'edge';
 const UpdateSchema = z.object({
   title:           z.string().min(1).max(100).optional(),
   description:     z.string().optional(),
-  assigned_to:     z.string().nullable().optional(),
   status:          z.enum(['open', 'in_progress', 'resolved', 'closed']).optional(),
   priority:        z.enum(['low', 'normal', 'high', 'urgent']).optional(),
   resolution_note: z.string().optional(),

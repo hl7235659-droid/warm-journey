@@ -36,9 +36,7 @@ export interface ServicePoint {
   services: string[];       // e.g. ['休息', '充电', '饮水', '急救箱', '雨具']
   admission: AdmissionInfo;
   notes: string;
-  qr_code_url: string;
   verified_at: number | null;
-  verified_by: string | null;
   created_at: number;
   updated_at: number;
   created_by: string | null;
@@ -56,7 +54,6 @@ export interface PointHistory {
   changed_by: string | null;
   changed_by_name?: string;    // joined
   changed_at: number;
-  change_summary: string;
   snapshot: ServicePoint;
 }
 
@@ -79,8 +76,6 @@ export interface WorkOrder {
   point_id: string | null;
   point_name?: string;         // joined
   report_id: string | null;
-  assigned_to: string | null;
-  assigned_name?: string;      // joined
   status: WorkOrderStatus;
   priority: WorkOrderPriority;
   resolution_note: string;
@@ -97,7 +92,6 @@ export interface Inspection {
   inspector_id: string | null;
   inspector_name?: string;     // joined
   result: InspectionResult;
-  findings: string[];
   images: string[];
   notes: string;
   inspected_at: number;

@@ -67,11 +67,11 @@ export default function AdminWorkOrdersPage() {
         <table>
           <thead>
             <tr>
-              {['标题', '优先级', '状态', '指派给', '创建时间', '操作'].map(h => <th key={h}>{h}</th>)}
+              {['标题', '优先级', '状态', '创建时间', '操作'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
-            {loading ? <SkeletonRows cols={6} /> : items.length === 0 ? <EmptyRow cols={6} text="暂无工单" /> :
+            {loading ? <SkeletonRows cols={5} /> : items.length === 0 ? <EmptyRow cols={5} text="暂无工单" /> :
               items.map(w => (
                 <tr key={w.id}>
                   <td className="td-name ellipsis" style={{ maxWidth: '200px' }}>{w.title}</td>
@@ -81,7 +81,6 @@ export default function AdminWorkOrdersPage() {
                   <td>
                     <span className={`badge ${STATUS_BADGE[w.status]}`}>{WORK_ORDER_STATUS_LABELS[w.status]}</span>
                   </td>
-                  <td className="td-meta">{w.assigned_to ?? '—'}</td>
                   <td className="td-time">{new Date(w.created_at * 1000).toLocaleDateString('zh-CN')}</td>
                   <td>
                     {canWrite && <button className="btn btn-ghost btn-sm" onClick={() => openEdit(w)}>更新</button>}

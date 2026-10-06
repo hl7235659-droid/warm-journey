@@ -15,7 +15,6 @@ export const GET = withAdmin(async ({ req, env }) => {
 const CreateSchema = z.object({
   point_id:   z.string().min(1),
   result:     z.enum(['pass', 'fail', 'partial']),
-  findings:   z.array(z.string().max(200)).max(20).default([]),
   images:     z.array(z.string().max(120)).max(8).default([]),
   notes:      z.string().max(2000).default(''),
   inspected_at: z.number().optional(),

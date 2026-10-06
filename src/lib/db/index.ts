@@ -79,14 +79,14 @@ export async function createPoint(
   const result = await db.prepare(
     `INSERT INTO service_points
        (name,address,lat,lng,city,district,contact_phone,open_hours,status,
-        services,admission,notes,qr_code_url,verified_at,verified_by,created_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        services,admission,notes,verified_at,created_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).bind(
     data.name, data.address, data.lat, data.lng, data.city, data.district,
     data.contact_phone, data.open_hours, data.status,
     JSON.stringify(data.services), JSON.stringify(data.admission),
-    data.notes, data.qr_code_url,
-    data.verified_at ?? null, data.verified_by ?? null, data.created_by ?? null,
+    data.notes,
+    data.verified_at ?? null, data.created_by ?? null,
     now, now,
   ).run();
   return result;
@@ -103,7 +103,7 @@ export async function updatePoint(
 
   const cols: (keyof typeof data)[] = [
     'name','address','lat','lng','city','district','contact_phone','open_hours',
-    'status','notes','qr_code_url','verified_at','verified_by',
+    'status','notes','verified_at',
   ];
   for (const col of cols) {
     if (data[col] !== undefined) { sets.push(`${col} = ?`); bindings.push(data[col]); }
@@ -115,18 +115,19 @@ export async function updatePoint(
   await db.prepare(`UPDATE service_points SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run();
 }
 
+// 变更前快照。没有"变更摘要"参数：此前调用方传的恒为写死的"管理员更新"（提交体里
+// 根本没有 change_summary 字段），一行假数据换不来任何可追溯性，改读 snapshot 本体。
 export async function snapshotPoint(
   db: D1Database,
   pointId: string,
   changedBy: string | null,
-  summary: string,
 ) {
   const point = await getPoint(db, pointId);
   if (!point) return;
   await db.prepare(
-    `INSERT INTO point_history (point_id, changed_by, changed_at, change_summary, snapshot)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).bind(pointId, changedBy, unixNow(), summary, JSON.stringify(point)).run();
+    `INSERT INTO point_history (point_id, changed_by, changed_at, snapshot)
+     VALUES (?, ?, ?, ?)`,
+  ).bind(pointId, changedBy, unixNow(), JSON.stringify(point)).run();
 }
 
 export async function listPointHistory(db: D1Database, pointId: string) {
@@ -246,12 +247,12 @@ export async function createWorkOrder(
   const id = genId();
   await db.prepare(
     `INSERT INTO work_orders
-       (id,title,description,point_id,report_id,assigned_to,status,priority,resolution_note,created_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id,title,description,point_id,report_id,status,priority,resolution_note,created_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
   ).bind(
     id,
     data.title, data.description, data.point_id ?? null, data.report_id ?? null,
-    data.assigned_to ?? null, data.status, data.priority, data.resolution_note,
+    data.status, data.priority, data.resolution_note,
     data.created_by ?? null, now, now,
   ).run();
   return id;
@@ -269,10 +270,9 @@ export async function listWorkOrders(
   const offset = (page - 1) * page_size;
   const [rows, count] = await Promise.all([
     db.prepare(
-      `SELECT wo.*, sp.name as point_name, au.display_name as assigned_name
+      `SELECT wo.*, sp.name as point_name
        FROM work_orders wo
        LEFT JOIN service_points sp ON sp.id = wo.point_id
-       LEFT JOIN admin_users au ON au.id = wo.assigned_to
        ${where} ORDER BY wo.updated_at DESC LIMIT ? OFFSET ?`,
     ).bind(...bindings, page_size, offset).all<WorkOrder>(),
     db.prepare(`SELECT COUNT(*) as n FROM work_orders wo ${where}`).bind(...bindings).first<{ n: number }>(),
@@ -282,10 +282,9 @@ export async function listWorkOrders(
 
 export async function getWorkOrder(db: D1Database, id: string) {
   return db.prepare(
-    `SELECT wo.*, sp.name as point_name, au.display_name as assigned_name
+    `SELECT wo.*, sp.name as point_name
      FROM work_orders wo
      LEFT JOIN service_points sp ON sp.id = wo.point_id
-     LEFT JOIN admin_users au ON au.id = wo.assigned_to
      WHERE wo.id = ?`,
   ).bind(id).first<WorkOrder>();
 }
@@ -294,7 +293,7 @@ export async function updateWorkOrder(db: D1Database, id: string, data: Partial<
   const now = unixNow();
   const sets: string[] = ['updated_at = ?'];
   const bindings: unknown[] = [now];
-  const cols: (keyof WorkOrder)[] = ['title','description','assigned_to','status','priority','resolution_note'];
+  const cols: (keyof WorkOrder)[] = ['title','description','status','priority','resolution_note'];
   for (const col of cols) {
     if (data[col] !== undefined) { sets.push(`${col} = ?`); bindings.push(data[col]); }
   }
@@ -319,11 +318,11 @@ export async function createInspection(
 ) {
   const now = unixNow();
   return db.prepare(
-    `INSERT INTO inspections (point_id, inspector_id, result, findings, images, notes, inspected_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
+    `INSERT INTO inspections (point_id, inspector_id, result, images, notes, inspected_at, created_at)
+     VALUES (?,?,?,?,?,?,?)`,
   ).bind(
     data.point_id, data.inspector_id ?? null, data.result,
-    JSON.stringify(data.findings), JSON.stringify(data.images),
+    JSON.stringify(data.images),
     data.notes, data.inspected_at ?? now, now,
   ).run();
 }
@@ -341,13 +340,12 @@ export async function listInspections(
        LEFT JOIN service_points sp ON sp.id = i.point_id
        LEFT JOIN admin_users au ON au.id = i.inspector_id
        ORDER BY i.inspected_at DESC LIMIT ? OFFSET ?`,
-    ).bind(page_size, offset).all<Inspection & { findings: string; images: string }>(),
+    ).bind(page_size, offset).all<Inspection & { images: string }>(),
     db.prepare('SELECT COUNT(*) as n FROM inspections').first<{ n: number }>(),
   ]);
   return {
     items: (rows.results ?? []).map(r => ({
       ...r,
-      findings: parseJsonArray(r.findings, 'inspections.findings'),
       images: parseJsonArray(r.images, 'inspections.images'),
     })),
     total: count?.n ?? 0, page, page_size,

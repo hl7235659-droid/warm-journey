@@ -22,13 +22,10 @@ const PointFields = {
   services:      z.array(z.string().max(20)).default([]),
   admission:     POINT_ADMISSION_SCHEMA.default({}),
   notes:         z.string().max(2000).default(''),
-  qr_code_url:   z.string().default(''),
   verified_at:   z.number().nullable().default(null),
-  verified_by:   z.string().nullable().default(null),
 };
 
 export const PointCreateSchema = z.object(PointFields);
 
 // PUT：缺省字段表示"不修改"（zod 的 optional 短路，不会套用 default）
-export const PointUpdateSchema = PointCreateSchema.partial()
-  .extend({ change_summary: z.string().max(200).optional() });
+export const PointUpdateSchema = PointCreateSchema.partial();

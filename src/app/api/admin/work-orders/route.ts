@@ -20,7 +20,6 @@ const CreateSchema = z.object({
   description: z.string().default(''),
   point_id:    z.string().nullable().default(null),
   report_id:   z.string().nullable().default(null),
-  assigned_to: z.string().nullable().default(null),
   priority:    z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
 });
 

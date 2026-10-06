@@ -57,10 +57,10 @@ export default function PointHistoryPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
                       <div>
                         <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem' }}>
-                          {h.change_summary || '变更'}
+                          {date.toLocaleString('zh-CN')}
                         </p>
                         <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          由 {h.changed_by_name ?? h.changed_by} · {date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          由 {h.changed_by_name ?? h.changed_by ?? '未知操作人'} 更新
                         </p>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '0.25rem', userSelect: 'none' }}>
