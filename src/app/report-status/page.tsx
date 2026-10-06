@@ -117,6 +117,7 @@ export default function ReportStatusPage() {
                   key={r.code}
                   className="card"
                   onClick={() => { setCode(r.code); void query(r.code); }}
+                  disabled={loading}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     gap: '0.75rem', width: '100%', textAlign: 'left', cursor: 'pointer',
