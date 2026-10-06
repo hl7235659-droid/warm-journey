@@ -9,10 +9,14 @@ export function clampInt(value: string | null, def: number, min: number, max: nu
 }
 
 // NaN / 越界一律收敛到合法区间：防 D1 抛错打穿成 500，也防超大 page_size 全表拉取。
-// 上限 200 与管理端「AI 周报」单次拉取量对齐（再大即视为滥用）。
-export function pageParams(sp: URLSearchParams, defaultSize = 20, maxSize = 200) {
+// 上限 200 写死：与管理端「AI 周报」单次拉取量对齐（再大即视为滥用）。
+// 此前它是第三个形参，9 个生产调用点全都只传 2 个——只有单测在传 3 个，
+// 等于给一个没人用的可调项留了一条后门。
+export const MAX_PAGE_SIZE = 200;
+
+export function pageParams(sp: URLSearchParams, defaultSize = 20) {
   return {
     page: clampInt(sp.get('page'), 1, 1, 100000),
-    page_size: clampInt(sp.get('page_size'), defaultSize, 1, maxSize),
+    page_size: clampInt(sp.get('page_size'), defaultSize, 1, MAX_PAGE_SIZE),
   };
 }

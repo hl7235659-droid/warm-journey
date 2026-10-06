@@ -152,7 +152,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_query_code ON reports(query_code) 
 CREATE INDEX IF NOT EXISTS idx_orders_status  ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_point   ON work_orders(point_id);
 CREATE INDEX IF NOT EXISTS idx_inspections_point ON inspections(point_id);
-CREATE INDEX IF NOT EXISTS idx_confirms_point  ON point_confirms(point_id);
+-- idx_confirms_point(point_id) 不建：它是上面 idx_confirms_token(point_id, rider_token,
+-- created_at) 的最左前缀，留着只让每次确认多维护一棵树（存量库由批次 7 迁移删除）
 CREATE INDEX IF NOT EXISTS idx_visits_point_status ON visits(point_id, status);
 CREATE INDEX IF NOT EXISTS idx_visits_status   ON visits(status);
 CREATE INDEX IF NOT EXISTS idx_visits_rider    ON visits(rider_token, status);

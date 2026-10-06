@@ -27,7 +27,7 @@ export async function signToken(payload: AdminPayload, env?: { JWT_SECRET?: stri
     .sign(getSecret(env));
 }
 
-export async function verifyToken(
+async function verifyToken(
   token: string,
   env?: { JWT_SECRET?: string },
 ): Promise<AdminPayload | null> {
@@ -39,7 +39,7 @@ export async function verifyToken(
   }
 }
 
-export function getTokenFromRequest(req: Request): string | null {
+function getTokenFromRequest(req: Request): string | null {
   const auth = req.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) return auth.slice(7);
   const cookie = req.headers.get('cookie') ?? '';

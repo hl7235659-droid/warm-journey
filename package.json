@@ -14,6 +14,7 @@
     "db:gc": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/gc.sql",
     "db:gc:prod": "wrangler d1 execute warm-journey-db --remote --file=src/lib/db/gc.sql",
     "db:seed": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed.sql",
+    "db:seed:demo": "wrangler d1 execute warm-journey-db --local --file=src/lib/db/seed-demo.sql",
     "test": "node --experimental-strip-types --test \"scripts/tests/*.test.mjs\"",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:create:prod": "node scripts/create-admin.mjs --remote"

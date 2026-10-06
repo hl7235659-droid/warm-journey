@@ -292,8 +292,19 @@ Windows 下 `vercel build` 用符号链接去重 `.func` 目录，未开启开�
 
 ### 示例数据
 
-`src/lib/db/seed.sql` 内置 3 个广州大学城（番禺区小谷围岛）示例服务点，
-用于本地演示和线上首屏。写入线上库：`npm run db:seed:prod`。
+两份 seed，风险等级不同，按名字区分：
+
+| 文件 | 内容 | 可执行环境 |
+|---|---|---|
+| `src/lib/db/seed.sql` | 3 个广州大学城（番禺区小谷围岛）示例服务点 + 1 个开通城市 + 6 条 AI 知识库条目，全 `INSERT OR IGNORE` | 本地 / 预览 / 生产皆可 |
+| `src/lib/db/seed-demo.sql` | 11 条 demo visits（含一条 `in_store`）+ 10 条 demo 反馈，专为 T1 客流提示 / T2 口碑摘要 / T3 AI 周报造数据 | **仅本地演示，禁止对生产库执行** |
+
+```bash
+npm run db:seed        # 基础数据（本地库）
+npm run db:seed:demo   # 演示客流（本地库，会污染在店人数与看板数字）
+```
+
+误把 demo 跑进生产后的清理办法：按固定主键 `demo000visit*` / `demofdbk*` 删除即可。
 
 ### 数据库访问
 

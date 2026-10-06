@@ -38,13 +38,12 @@ export async function POST(req: Request) {
     }
   }
 
-  const { id: reportId, query_code: queryCode } = await createReport(env.DB, parsed);
+  const { query_code: queryCode } = await createReport(env.DB, parsed);
 
-  // 同一点位待核实上报达到阈值 → 自动开工单并关联
-  const autoOrderId = await maybeAutoCreateWorkOrder(env.DB, parsed.point_id);
+  // 同一点位待核实上报达到阈值 → 自动开工单并关联（副作用保留，工单 id 不下发）
+  await maybeAutoCreateWorkOrder(env.DB, parsed.point_id);
 
-  return Response.json({
-    ok: true,
-    data: { message: '上报成功，感谢您的反馈', report_id: reportId, query_code: queryCode, auto_order_id: autoOrderId },
-  }, { status: 201 });
+  // 响应只给免登录追踪需要的查询码：report_id 与内部工单 id 对本页零消费者，
+  // 下发出去只是多给两个可枚举标识（成功提示文案本来也写死在上报页）。
+  return Response.json({ ok: true, data: { query_code: queryCode } }, { status: 201 });
 }

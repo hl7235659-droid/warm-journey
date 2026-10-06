@@ -1,5 +1,6 @@
 import type {
   ServicePoint, Report, WorkOrder, Inspection, AdminUser, PointHistory,
+  Visit, VisitFeedback,
   KnowledgeCategory, ReportCategory, ReportStatus,
 } from '@/lib/types';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
@@ -25,22 +26,12 @@ export async function listPoints(
     if (tag) { wheres.push("services LIKE ?"); bindings.push(`%"${tag}"%`); }
   }
 
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-  const offset = (page - 1) * page_size;
+  const { rows, total } = await paginate<RawPoint>(db, {
+    select: '*', from: 'FROM service_points', countFrom: 'FROM service_points',
+    wheres, bindings, order: 'ORDER BY updated_at DESC', page, page_size,
+  });
 
-  const [rows, countRow] = await Promise.all([
-    db.prepare(`SELECT * FROM service_points ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-      .bind(...bindings, page_size, offset).all<ServicePoint & { services: string; admission: string }>(),
-    db.prepare(`SELECT COUNT(*) as n FROM service_points ${where}`)
-      .bind(...bindings).first<{ n: number }>(),
-  ]);
-
-  return {
-    items: (rows.results ?? []).map(deserializePoint),
-    total: countRow?.n ?? 0,
-    page,
-    page_size,
-  };
+  return { items: rows.map(deserializePoint), total, page, page_size };
 }
 
 // 首页三枚圆章的全量口径。B4：此前前端在"当前筛选 + 当前页"的 items 上现算开放数与
@@ -176,17 +167,11 @@ export async function createReport(
 }
 
 // 免登录进度查询：凭查询码精确匹配。只返回进度必需字段，content 不对公网暴露。
+// 旧版"report id 前 10 位"兼容分支已删：生产 reports 表 0 行、无存量旧码用户，
+// 而唯一会写出旧码的入口（migrate-20261005 的回填）也已随批次 7 的迁移链退场。
 export async function getReportByCode(db: D1Database, code: string) {
   const normalized = code.trim().toLowerCase();
-  if (!/^[0-9a-z]{10}$/.test(normalized)) {
-    // 兼容旧版查询码（report id 本身，16 位 hex）
-    if (!/^[0-9a-f]{16}$/.test(normalized)) return null;
-    return db.prepare(
-      `SELECT r.id, r.point_id, r.category, r.status, r.created_at, sp.name as point_name
-       FROM reports r LEFT JOIN service_points sp ON sp.id = r.point_id
-       WHERE r.id = ? LIMIT 1`,
-    ).bind(normalized).first<ReportStatusPublic>();
-  }
+  if (!/^[0-9a-z]{10}$/.test(normalized)) return null;
   return db.prepare(
     `SELECT r.id, r.point_id, r.category, r.status, r.created_at, sp.name as point_name
      FROM reports r LEFT JOIN service_points sp ON sp.id = r.point_id
@@ -208,19 +193,15 @@ export async function listReports(
   const wheres: string[] = [];
   const bindings: unknown[] = [];
   if (status) { wheres.push('r.status = ?'); bindings.push(status); }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-  const offset = (page - 1) * page_size;
-  const [rows, count] = await Promise.all([
-    db.prepare(
-      `SELECT r.*, sp.name as point_name FROM reports r
-       LEFT JOIN service_points sp ON sp.id = r.point_id
-       ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<Report & { images: string; point_name?: string }>(),
-    db.prepare(`SELECT COUNT(*) as n FROM reports r ${where}`).bind(...bindings).first<{ n: number }>(),
-  ]);
+  const { rows, total } = await paginate<Report & { images: string; point_name?: string }>(db, {
+    select: 'r.*, sp.name as point_name',
+    from: 'FROM reports r LEFT JOIN service_points sp ON sp.id = r.point_id',
+    countFrom: 'FROM reports r',
+    wheres, bindings, order: 'ORDER BY r.created_at DESC', page, page_size,
+  });
   return {
-    items: (rows.results ?? []).map(r => ({ ...r, images: parseJsonArray(r.images, 'reports.images') })),
-    total: count?.n ?? 0, page, page_size,
+    items: rows.map(r => ({ ...r, images: parseJsonArray(r.images, 'reports.images') })),
+    total, page, page_size,
   };
 }
 
@@ -267,18 +248,13 @@ export async function listWorkOrders(
   const wheres: string[] = [];
   const bindings: unknown[] = [];
   if (status) { wheres.push('wo.status = ?'); bindings.push(status); }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-  const offset = (page - 1) * page_size;
-  const [rows, count] = await Promise.all([
-    db.prepare(
-      `SELECT wo.*, sp.name as point_name
-       FROM work_orders wo
-       LEFT JOIN service_points sp ON sp.id = wo.point_id
-       ${where} ORDER BY wo.updated_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<WorkOrder>(),
-    db.prepare(`SELECT COUNT(*) as n FROM work_orders wo ${where}`).bind(...bindings).first<{ n: number }>(),
-  ]);
-  return { items: rows.results ?? [], total: count?.n ?? 0, page, page_size };
+  const { rows, total } = await paginate<WorkOrder>(db, {
+    select: 'wo.*, sp.name as point_name',
+    from: 'FROM work_orders wo LEFT JOIN service_points sp ON sp.id = wo.point_id',
+    countFrom: 'FROM work_orders wo',
+    wheres, bindings, order: 'ORDER BY wo.updated_at DESC', page, page_size,
+  });
+  return { items: rows, total, page, page_size };
 }
 
 export async function getWorkOrder(db: D1Database, id: string) {
@@ -333,23 +309,17 @@ export async function listInspections(
   opts: { page?: number; page_size?: number } = {},
 ) {
   const { page = 1, page_size = 20 } = opts;
-  const offset = (page - 1) * page_size;
-  const [rows, count] = await Promise.all([
-    db.prepare(
-      `SELECT i.*, sp.name as point_name, au.display_name as inspector_name
-       FROM inspections i
-       LEFT JOIN service_points sp ON sp.id = i.point_id
-       LEFT JOIN admin_users au ON au.id = i.inspector_id
-       ORDER BY i.inspected_at DESC LIMIT ? OFFSET ?`,
-    ).bind(page_size, offset).all<Inspection & { images: string }>(),
-    db.prepare('SELECT COUNT(*) as n FROM inspections').first<{ n: number }>(),
-  ]);
+  const { rows, total } = await paginate<Inspection & { images: string }>(db, {
+    select: 'i.*, sp.name as point_name, au.display_name as inspector_name',
+    from: `FROM inspections i
+           LEFT JOIN service_points sp ON sp.id = i.point_id
+           LEFT JOIN admin_users au ON au.id = i.inspector_id`,
+    countFrom: 'FROM inspections i',
+    order: 'ORDER BY i.inspected_at DESC', page, page_size,
+  });
   return {
-    items: (rows.results ?? []).map(r => ({
-      ...r,
-      images: parseJsonArray(r.images, 'inspections.images'),
-    })),
-    total: count?.n ?? 0, page, page_size,
+    items: rows.map(r => ({ ...r, images: parseJsonArray(r.images, 'inspections.images') })),
+    total, page, page_size,
   };
 }
 
@@ -491,7 +461,7 @@ export interface AdminStats {
 }
 
 // 北京时间（UTC+8）当日 0 点的 unix 秒
-export function shanghaiDayStart(now = unixNow()): number {
+function shanghaiDayStart(now = unixNow()): number {
   return Math.floor((now + 8 * 3600) / 86400) * 86400 - 8 * 3600;
 }
 
@@ -616,8 +586,6 @@ export async function maybeAutoCreateWorkOrder(db: D1Database, pointId: string) 
 // Visits（预约进店 / 扫码离店 / 在店人数）
 // ---------------------------------------------------------------------------
 
-import type { Visit, VisitFeedback } from '@/lib/types';
-
 // 预约名额保留时长：2 小时
 export const RESERVATION_TTL = 2 * 3600;
 // 入店超过该时长未扫码离店 → 自动离店，防止人数虚高
@@ -627,7 +595,7 @@ export const AUTO_CHECKOUT_AFTER = 4 * 3600;
 // 只在**读路径**跑（getOccupancy / getRiderVisitState / getNearbyPoints / 管理端
 // listVisits / getAdminStats / reserveVisit 的容量闸门）——写路径每次白跑两条全表 UPDATE，
 // 而过期数据真正的危害是让这些数字虚高、被展示给用户。
-export async function expireStaleVisits(db: D1Database) {
+async function expireStaleVisits(db: D1Database) {
   const now = unixNow();
   await db.prepare(
     `UPDATE visits SET status = 'expired' WHERE status = 'reserved' AND reserved_at < ?`,
@@ -761,7 +729,7 @@ export async function checkinVisit(db: D1Database, id: string, code = '') {
   const visit = await getVisit(db, id);
   if (!visit) return { error: 'not_found' as const };
   const expected = (visit as Visit & { checkin_code?: string | null }).checkin_code ?? '';
-  if (!expected || !timingSafeEqualStr(expected, code.trim().toLowerCase())) {
+  if (!expected || expected !== code.trim().toLowerCase()) {
     return { error: 'bad_code' as const, visit };
   }
   if (visit.status === 'in_store') return { visit, already: true as const };
@@ -823,21 +791,18 @@ export async function listVisits(
   const wheres: string[] = [];
   const bindings: unknown[] = [];
   if (status) { wheres.push('v.status = ?'); bindings.push(status); }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-  const offset = (page - 1) * page_size;
-  const [rows, count] = await Promise.all([
-    db.prepare(
-      `SELECT v.*, sp.name as point_name FROM visits v
-       LEFT JOIN service_points sp ON sp.id = v.point_id
-       ${where} ORDER BY v.created_at DESC LIMIT ? OFFSET ?`,
-    ).bind(...bindings, page_size, offset).all<Visit & { created_ip?: string | null }>(),
-    db.prepare(`SELECT COUNT(*) as n FROM visits v ${where}`).bind(...bindings).first<{ n: number }>(),
-  ]);
+  const { rows, total } = await paginate<Visit>(db, {
+    select: 'v.*, sp.name as point_name',
+    from: 'FROM visits v LEFT JOIN service_points sp ON sp.id = v.point_id',
+    countFrom: 'FROM visits v',
+    wheres, bindings, order: 'ORDER BY v.created_at DESC', page, page_size,
+  });
   return {
-    items: (rows.results ?? []).map(({ created_ip, checkin_code, ...v }) => ({
+    // rider_token 脱敏，created_ip / checkin_code 属内部反滥用字段，一律不下发
+    items: rows.map(({ created_ip, checkin_code, ...v }) => ({
       ...v, rider_token: maskToken(v.rider_token),
     })),
-    total: count?.n ?? 0, page, page_size,
+    total, page, page_size,
   };
 }
 
@@ -874,19 +839,18 @@ export async function listVisitFeedback(
   opts: { page?: number; page_size?: number } = {},
 ) {
   const { page = 1, page_size = 20 } = opts;
-  const offset = (page - 1) * page_size;
-  const [rows, count, avg] = await Promise.all([
-    db.prepare(
-      `SELECT f.*, sp.name as point_name FROM visit_feedback f
-       LEFT JOIN service_points sp ON sp.id = f.point_id
-       ORDER BY f.created_at DESC LIMIT ? OFFSET ?`,
-    ).bind(page_size, offset).all<VisitFeedback & { supports: string }>(),
-    db.prepare('SELECT COUNT(*) as n FROM visit_feedback').first<{ n: number }>(),
+  const [paged, avg] = await Promise.all([
+    paginate<VisitFeedback & { supports: string }>(db, {
+      select: 'f.*, sp.name as point_name',
+      from: 'FROM visit_feedback f LEFT JOIN service_points sp ON sp.id = f.point_id',
+      countFrom: 'FROM visit_feedback f',
+      order: 'ORDER BY f.created_at DESC', page, page_size,
+    }),
     db.prepare('SELECT AVG(rating) as a FROM visit_feedback').first<{ a: number | null }>(),
   ]);
   return {
-    items: (rows.results ?? []).map(r => ({ ...r, supports: parseJsonArray(r.supports, 'visit_feedback.supports') })),
-    total: count?.n ?? 0,
+    items: paged.rows.map(r => ({ ...r, supports: parseJsonArray(r.supports, 'visit_feedback.supports') })),
+    total: paged.total,
     avg_rating: avg?.a ? Math.round(avg.a * 10) / 10 : null,
     page, page_size,
   };
@@ -929,14 +893,11 @@ export async function listKnowledge(
     wheres.push('(title LIKE ? OR content LIKE ? OR tags LIKE ?)');
     bindings.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
-  const where = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-  const offset = (page - 1) * page_size;
-  const [rows, count] = await Promise.all([
-    db.prepare(`SELECT * FROM ai_knowledge ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-      .bind(...bindings, page_size, offset).all<RawKnowledge>(),
-    db.prepare(`SELECT COUNT(*) as n FROM ai_knowledge ${where}`).bind(...bindings).first<{ n: number }>(),
-  ]);
-  return { items: (rows.results ?? []).map(deserializeKnowledge), total: count?.n ?? 0, page, page_size };
+  const { rows, total } = await paginate<RawKnowledge>(db, {
+    select: '*', from: 'FROM ai_knowledge', countFrom: 'FROM ai_knowledge',
+    wheres, bindings, order: 'ORDER BY updated_at DESC', page, page_size,
+  });
+  return { items: rows.map(deserializeKnowledge), total, page, page_size };
 }
 
 export async function createKnowledge(
@@ -1013,7 +974,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-export function formatDistance(meters: number): string {
+function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)}m`;
   return `${(meters / 1000).toFixed(1)}km`;
 }
@@ -1227,23 +1188,44 @@ function genId() {
 }
 
 // 查询码：10 位 Crockford base32（小写、去除 i/l/o/u 防误读），熵 ≈ 50 bit
-// 10 位 Crockford base32 ≈ 50 bit 随机码：上报查询码与一次性入店码共用
-export function genRandomCode() {
+// 10 位 Crockford base32 ≈ 50 bit 随机码：上报查询码与一次性入店码共用。
+// 入店码校验用 `!==` 直接比：50 bit 熵 + 2 小时生命周期 + 每 IP 每分钟 10 次限流
+// 已经把时序试探的空间压到没有，而原实现开头 `a.length !== b.length` 早退
+// 本就先把长度泄漏出去，"恒定时间"名不副实。
+function genRandomCode() {
   const alphabet = '0123456789abcdefghjkmnpqrstvwxyz';
   const bytes = new Uint8Array(10);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, b => alphabet[b % 32]).join('');
 }
 
-// 定长字符串恒定时间比较：避免入店码校验被时序攻击逐位试探
-function timingSafeEqualStr(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+type RawPoint = ServicePoint & { services: string; admission: string };
+
+// 分页查询的公共骨架：过滤拼 WHERE → 同一份 WHERE 计数 → LIMIT/OFFSET 取页。
+// select/from 与 countFrom 分开写：列表要 JOIN 出人类可读的名称列，计数只认主表
+// （一对多 JOIN 会让 COUNT 虚高）。所有 SQL 片段都是代码字面量，值一律走 bind。
+interface PageQuery {
+  select: string;
+  from: string;
+  countFrom: string;
+  wheres?: string[];
+  bindings?: unknown[];
+  order: string;
+  page: number;
+  page_size: number;
 }
 
-type RawPoint = ServicePoint & { services: string; admission: string };
+async function paginate<Row>(db: D1Database, q: PageQuery) {
+  const where = q.wheres?.length ? `WHERE ${q.wheres.join(' AND ')}` : '';
+  const bindings = q.bindings ?? [];
+  const [rows, count] = await Promise.all([
+    db.prepare(`SELECT ${q.select} ${q.from} ${where} ${q.order} LIMIT ? OFFSET ?`)
+      .bind(...bindings, q.page_size, (q.page - 1) * q.page_size).all<Row>(),
+    db.prepare(`SELECT COUNT(*) as n ${q.countFrom} ${where}`).bind(...bindings).first<{ n: number }>(),
+  ]);
+  return { rows: rows.results ?? [], total: count?.n ?? 0 };
+}
+
 // 坏数据（非法 JSON）不应把整条读路径打成 500：解析失败降级为空值并留痕
 function parseJsonArray<T = string>(raw: string | null | undefined, ctx: string): T[] {
   try {

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateBaseUrl, isTrustedProviderHost, chatCompletionsUrl } from '../../src/lib/ai/fetch.ts';
-import { pageParams, clampInt } from '../../src/lib/pagination.ts';
+import { pageParams, clampInt, MAX_PAGE_SIZE } from '../../src/lib/pagination.ts';
 import { PointCreateSchema, PointUpdateSchema, POINT_ADMISSION_SCHEMA } from '../../src/lib/point-schema.ts';
 
 // ---------- AI 出站地址校验（防开放代理 / SSRF） ----------
@@ -51,10 +51,11 @@ test('子域只认受信任父域，尾斜杠被规范化', () => {
 
 test('pageParams 把非法与越界值收敛到合法区间', () => {
   assert.deepEqual(pageParams(new URLSearchParams('page=abc&page_size=abc')), { page: 1, page_size: 20 });
-  assert.deepEqual(pageParams(new URLSearchParams('page_size=999999')).page_size, 200);
+  assert.deepEqual(pageParams(new URLSearchParams('page_size=999999')).page_size, MAX_PAGE_SIZE);
   assert.deepEqual(pageParams(new URLSearchParams('page_size=0')).page_size, 1);
   assert.deepEqual(pageParams(new URLSearchParams('page=-5')).page, 1);
-  assert.deepEqual(pageParams(new URLSearchParams('page=2.7&page_size=10'), 20, 50), { page: 2, page_size: 10 });
+  // 默认页大小仍可调，上限不可调（历史上第三参只有本测试在用）
+  assert.deepEqual(pageParams(new URLSearchParams('page=2.7&page_size=10'), 20), { page: 2, page_size: 10 });
   assert.equal(clampInt('-1', 5, 1, 10), 1);
   assert.equal(clampInt(null, 7, 1, 10), 7);
 });
