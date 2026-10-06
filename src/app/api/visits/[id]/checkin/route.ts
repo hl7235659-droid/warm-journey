@@ -1,6 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkinVisit, checkRateLimit } from '@/lib/db';
 import { readJson, isResponse, getClientIp } from '@/lib/http';
+import { sanitizeVisit } from '@/lib/visit-sanitize';
 import { z } from 'zod';
 
 const CheckinSchema = z.object({
@@ -19,9 +20,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const parsed = await readJson(req, CheckinSchema);
-  if (isResponse(parsed)) {
-    return Response.json({ ok: false, error: '缺少入店码，请扫描骑手二维码的完整内容' }, { status: 403 });
-  }
+  // 与其他路由同口径：格式/校验错误原样返回 400/422，不压成"缺少入店码"的 403 误导排障。
+  // 真正的凭证问题走下面 bad_code（业务码不匹配）分支。
+  if (isResponse(parsed)) return parsed;
 
   const { id } = await params;
   const result = await checkinVisit(env.DB, id, parsed.code);
@@ -33,8 +34,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return Response.json({ ok: false, error: '该预约已失效（可能已过期或已取消），请重新预约' }, { status: 409 });
   }
   if (!result.visit) return Response.json({ ok: false, error: '预约不存在' }, { status: 404 });
-  const {
-    rider_token: _omitToken, created_ip: _omitIp, checkin_code: _omitCode, ...safeVisit
-  } = result.visit;
-  return Response.json({ ok: true, data: { visit: safeVisit, already: 'already' in result } });
+  return Response.json({ ok: true, data: { visit: sanitizeVisit(result.visit), already: 'already' in result } });
 }

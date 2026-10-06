@@ -1,6 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { getVisit, checkRateLimit } from '@/lib/db';
 import { getClientIp } from '@/lib/http';
+import { sanitizeVisit } from '@/lib/visit-sanitize';
 
 // 查询 visit（入店确认页用，id 即凭证）：GET /api/visits/[id]
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,13 +15,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const visit = await getVisit(env.DB, id);
   if (!visit) return Response.json({ ok: false, error: '预约不存在' }, { status: 404 });
-  // 不下发完整 rider_token / checkin_code / created_ip，防旁观者可操作或远程代确认
-  const { rider_token, created_ip, checkin_code, ...safeVisit } = visit;
   // occupancy 不在这里：两个真实消费者（入店确认页、AI route action）都只读 .visit，
   // 每次为它们多跑 5 条 D1 语句换不来一个读取方。需要占用数字的骑手详情页
   // 走 /api/visits/active（P2-20）。
-  return Response.json({
-    ok: true,
-    data: { visit: { ...safeVisit, rider_token: rider_token.slice(0, 6) + '…' } },
-  });
+  // maskToken = 确认页要辨认"是哪个骑手"，只给前 6 位；入店码与 IP 一律不下发，
+  // 否则旁观者可凭响应远程代确认入店。
+  return Response.json({ ok: true, data: { visit: sanitizeVisit(visit, { maskToken: true }) } });
 }

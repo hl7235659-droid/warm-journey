@@ -1,6 +1,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { checkoutVisit } from '@/lib/db';
 import { readJson, isResponse, RiderTokenSchema } from '@/lib/http';
+import { sanitizeVisit } from '@/lib/visit-sanitize';
 import { z } from 'zod';
 
 const CheckoutSchema = z.object({
@@ -19,5 +20,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (result.error === 'not_found') return Response.json({ ok: false, error: '记录不存在' }, { status: 404 });
   if (result.error === 'forbidden') return Response.json({ ok: false, error: '只能操作自己的进店记录' }, { status: 403 });
   if (result.error === 'invalid_state') return Response.json({ ok: false, error: '当前状态无法离店' }, { status: 409 });
-  return Response.json({ ok: true, data: { visit: result.visit, already: 'already' in result } });
+  return Response.json({
+    ok: true,
+    data: { visit: result.visit ? sanitizeVisit(result.visit) : null, already: 'already' in result },
+  });
 }
