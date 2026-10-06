@@ -1,17 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { ServicePoint, PointStatus } from '@/lib/types';
-import { STATUS_LABELS, STATUS_SEALS, POINT_STATUSES, SERVICE_TAGS } from '@/lib/types';
+import type { ServicePoint } from '@/lib/types';
+import { STATUS_LABELS, STATUS_SEALS } from '@/lib/types';
 import { POINT_COVERS, COVER_FALLBACK } from '@/lib/covers';
 import { api } from '@/lib/api-client';
 import type { PointStats } from '@/lib/db';
-import { LS_KEYS, readList, writeList } from '@/lib/local';
 import { haversine, byDistance } from '@/lib/geo';
 import { Branch, Corners, Swoosh } from '@/components/ornaments';
-
-// 状态筛选 chips：'全部' + 与后端同一份状态枚举
-const STATUS_CHIPS: Array<'' | PointStatus> = ['', ...POINT_STATUSES];
+import FilterPanel from './filter-panel';
+import { useFavorites } from './use-favorites';
 
 function formatDist(km: number) {
   return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
@@ -73,9 +71,6 @@ function PointCard({ point, userLat, userLng, idx, fav, onToggleFav }: {
   );
 }
 
-// 收藏裁剪上限：远大于站点总数，实际不会丢收藏（默认 50 会静默丢弃新收藏）
-const FAV_MAX = 500;
-
 export default function HomePage() {
   const [points, setPoints] = useState<ServicePoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,10 +86,10 @@ export default function HomePage() {
   const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
   const [cityFilter, setCityFilter] = useState('');
   const [serviceFilter, setServiceFilter] = useState('');
-  const [favs, setFavs] = useState<string[]>([]);
   const [favOnly, setFavOnly] = useState(false);
   // 三枚圆章的全量口径：由服务端聚合，与当前筛选和分页无关
   const [meta, setMeta] = useState<PointStats | null>(null);
+  const { favs, toggleFav } = useFavorites();
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 300);
@@ -118,17 +113,6 @@ export default function HomePage() {
       if (service) setServiceFilter(service);
     } catch { /* ignore */ }
   }, []);
-
-  // 收藏（localStorage）
-  useEffect(() => { setFavs(readList<string>(LS_KEYS.favs, FAV_MAX)); }, []);
-
-  function toggleFav(id: string) {
-    setFavs(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      writeList(LS_KEYS.favs, next, FAV_MAX);
-      return next;
-    });
-  }
 
   const fetchPoints = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -230,85 +214,15 @@ export default function HomePage() {
 
       <div className="slide-body">
         {/* 检索匣 */}
-        <div className="panel-frame anim-rise" style={{ animationDelay: '200ms' }}>
-          {cities.length > 1 && (
-            <div className="panel-row">
-              <span className="brush-label">城市</span>
-              <div className="toolbar-chips" role="group" aria-label="城市筛选">
-                <button
-                  onClick={() => setCityFilter('')}
-                  className={`tab${cityFilter === '' ? ' is-active' : ''}`}
-                  aria-pressed={cityFilter === ''}
-                >全部</button>
-                {cities.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => setCityFilter(c.name)}
-                    className={`tab${cityFilter === c.name ? ' is-active' : ''}`}
-                    aria-pressed={cityFilter === c.name}
-                  >{c.name}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="panel-row">
-            <span className="brush-label">筛选</span>
-            <div className="toolbar-chips" role="group" aria-label="状态筛选">
-              {STATUS_CHIPS.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`tab${statusFilter === s ? ' is-active' : ''}`}
-                  aria-pressed={statusFilter === s}
-                >
-                  {s === '' ? '全部' : STATUS_LABELS[s]}
-                </button>
-              ))}
-              <button
-                onClick={() => setFavOnly(v => !v)}
-                className={`tab${favOnly ? ' is-active' : ''}`}
-                aria-pressed={favOnly}
-              >♥ 已收藏</button>
-            </div>
-          </div>
-          <div className="panel-row">
-            <span className="brush-label">服务</span>
-            <div className="toolbar-chips" role="group" aria-label="服务筛选">
-              <button
-                onClick={() => setServiceFilter('')}
-                className={`tab${serviceFilter === '' ? ' is-active' : ''}`}
-                aria-pressed={serviceFilter === ''}
-              >全部</button>
-              {SERVICE_TAGS.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setServiceFilter(cur => (cur === s ? '' : s))}
-                  className={`tab${serviceFilter === s ? ' is-active' : ''}`}
-                  aria-pressed={serviceFilter === s}
-                >{s}</button>
-              ))}
-            </div>
-          </div>
-          <div className="panel-row">
-            <input
-              className="input"
-              type="search"
-              placeholder="搜索站点名称或地址…"
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              aria-label="搜索站点"
-            />
-            <button
-              className="btn btn-secondary"
-              onClick={requestLocation}
-              aria-label="使用我的位置排序"
-              title="按距离排序"
-              style={{ flexShrink: 0, padding: '0 0.875rem' }}
-            >
-              定位
-            </button>
-          </div>
-        </div>
+        <FilterPanel
+          cities={cities}
+          city={cityFilter} onCity={setCityFilter}
+          status={statusFilter} onStatus={setStatusFilter}
+          favOnly={favOnly} onToggleFavOnly={() => setFavOnly(v => !v)}
+          service={serviceFilter} onServiceToggle={s => setServiceFilter(cur => (cur === s ? '' : s))}
+          q={q} onQuery={setQ}
+          onLocate={requestLocation}
+        />
 
         {geoError && (
           <p style={{ fontSize: '0.83rem', color: 'var(--danger)', margin: '0.75rem 0 0' }}>{geoError}</p>
