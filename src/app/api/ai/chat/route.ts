@@ -15,7 +15,9 @@ import { getClientIp, jsonErr } from '@/lib/http';
 import { STATUS_LABELS } from '@/lib/types';
 import type { AiContext, AiAction, ChatResponse } from '@/lib/ai/types';
 
-const REQUEST_TIMEOUT_MS = 90_000;
+// 上游转发超时（L8）：Workers 墙钟限制下，90s 可能先吃平台错误而拿不到降级文案；
+// 30s 足够任何合规 provider 完成非流式补全，超时让位给本地降级而不是平台报错。
+const REQUEST_TIMEOUT_MS = 30_000;
 
 // 全站每日对话总量上限（服务端 Key 兜底消耗的总闸门，按 UTC 日计）
 const GLOBAL_DAILY_LIMIT = 3000;
