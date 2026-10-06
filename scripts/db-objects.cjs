@@ -9,6 +9,8 @@ const pick = (re, fallback) => (toml.match(re) || [])[1] || fallback;
 
 const DB_NAME = process.env.D1_DATABASE || pick(/^database_name\s*=\s*"([^"]+)"/m, 'warm-journey-db');
 const PAGES_PROJECT = process.env.PAGES_PROJECT || pick(/^name\s*=\s*"([^"]+)"/m, 'warm-journey');
+// OAuth token 关联多个账户时，非交互的 Pages 命令需要靠这个值消歧（见 deploy.cjs 的 cwd 绕法）
+const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || pick(/^account_id\s*=\s*"([^"]+)"/m, '');
 const SCHEMA_FILE = path.join(__dirname, '..', 'src', 'lib', 'db', 'schema.sql');
 
 // [标签, 存在性探测语句, 缺失时的修复 DDL]
@@ -42,4 +44,4 @@ const BACKFILL_AFTER_ADD = [
     "UPDATE visits SET checkin_code = lower(hex(randomblob(5))) WHERE checkin_code IS NULL AND status IN ('reserved','in_store');"],
 ];
 
-module.exports = { DB_NAME, PAGES_PROJECT, SCHEMA_FILE, REQUIRED_COLUMNS, REQUIRED_TABLES, BACKFILL_AFTER_ADD };
+module.exports = { DB_NAME, PAGES_PROJECT, ACCOUNT_ID, SCHEMA_FILE, REQUIRED_COLUMNS, REQUIRED_TABLES, BACKFILL_AFTER_ADD };
