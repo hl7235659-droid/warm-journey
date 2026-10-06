@@ -10,7 +10,8 @@
 //
 // 用法：
 //   node scripts/seed-ops.mjs                 # 本地库（.wrangler 里的 d1）
-//   node scripts/seed-ops.mjs --remote        # 生产库
+//   node scripts/seed-ops.mjs --remote        # 生产库（会要求输入 prod 确认）
+//   node scripts/seed-ops.mjs --remote --yes  # 生产库，跳过确认（自动化场景）
 //   node scripts/seed-ops.mjs --remote --live-only   # 只刷新"当前在店/已预约/今日进店"
 //   node scripts/seed-ops.mjs --remote --purge       # 删掉本脚本写过的所有行
 //   node scripts/seed-ops.mjs --dry /tmp/x.sql       # 只生成 SQL 不执行（--dry 后跟输出路径）
@@ -26,14 +27,16 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
-import { argv, exit } from 'node:process';
+import { argv, exit, stdin, stdout } from 'node:process';
 
 const require = createRequire(import.meta.url);
 const { DB_NAME, ACCOUNT_ID } = require('./db-objects.cjs');
 
 const WRANGLER = path.resolve(import.meta.dirname, '..', 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 const REMOTE = argv.includes('--remote');
+const YES = argv.includes('--yes');
 const LIVE_ONLY = argv.includes('--live-only');
 const PURGE = argv.includes('--purge');
 const DRY_AT = argv.indexOf('--dry');
@@ -897,5 +900,32 @@ function printLive(codes) {
     for (const r of openRep) console.log(`    ${r.query_code}  ${r.status}  ${r.category}`);
   }
 }
+
+// 生产库写入闸（M9）：本脚本写出去的是合成数据，误跑进生产会污染真实运营统计与看板，
+// 而"清理"要靠记得住 ops* 前缀。--remote 的任何写操作（造数/刷新/purge）都要求手输 prod，
+// 自动化场景显式带 --yes。--dry 只生成 SQL 不写库，不受此闸约束。
+async function confirmRemoteWrite() {
+  const what = PURGE ? '删除生产库的 ops* 造数行' : LIVE_ONLY ? '刷新生产库的实时尾部' : '向生产库写入半年合成流水';
+  if (!stdin.isTTY) {
+    console.error(`✗ 本次操作是「${what}」，需要交互确认，而当前是非交互环境。`);
+    console.error('  确认无误后手动加 --yes 重跑：node scripts/seed-ops.mjs --remote --yes');
+    exit(1);
+  }
+  console.error(`⚠ 目标：生产库 ${DB_NAME} —— ${what}`);
+  console.error('  这些全是合成数据（主键 ops* 前缀）。路演结束后请用 npm run db:seed:ops:purge:prod 清干净。');
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  let answer = '';
+  try {
+    answer = (await rl.question('输入 prod 确认执行，其他任意输入取消: ')).trim();
+  } finally {
+    rl.close();
+  }
+  if (answer !== 'prod') {
+    console.log('已取消，未对生产库做任何写入。');
+    exit(0);
+  }
+}
+
+if (REMOTE && !YES && !DRY_FILE) await confirmRemoteWrite();
 
 main();

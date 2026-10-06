@@ -223,8 +223,15 @@ Cron Trigger 每日 UTC 03:00 自动清理（`src/worker.ts` 的 scheduled handl
 一次过期预约/超时在店的懒清理）。`wrangler.toml [triggers]` 随部署自动注册，无需手工调度。
 
 `ai_rate` 另有内联的概率式摊销清理（每次计数 1/60 概率删 7 天前的行），与 Cron 互补。
-R2 里未被引用的图片对象需另配生命周期规则（Bucket → Lifecycle rules，对 `img/` 前缀
-设置 30 天过期）。
+
+R2 里的图片对象**不要**配"按上传时间 N 天过期"的生命周期规则：上报/巡检图片是长期展示的，
+一条 30 天 TTL 会把仍被引用的老图删成死链。孤儿对象有两个来源，各自的处理：
+
+- 台账（`uploads`）写失败 → 路由当场删除刚上传的对象再返回 500（`src/app/api/upload/route.ts`），
+  这是已实现的闸门，不留这类孤儿。
+- 上传成功但从未被任何上报/巡检引用 → 需要对照台账与 `reports.images` / `inspections.images`
+  清理，**挂账运维项 `scripts/cleanup-r2.mjs`（尚未实现）**：只删超 30 天且未被引用的 key，
+  删前先 dry-run 打印清单。在这脚本落地前，这类孤儿只是缓慢占用容量，无功能影响。
 
 ### 部署后冒烟
 
@@ -365,6 +372,18 @@ npm run db:seed:ops:purge:prod                    # 按 ops* 前缀精确删除�
 node scripts/seed-ops.mjs --remote --live-only    # 只重造"当前在店 / 有效预约 / 今日进店"
 node scripts/seed-ops.mjs --dry out.sql           # 只生成 SQL 不执行
 ```
+
+`--remote` 的任何写操作（造数 / 刷新实时尾部 / purge）都会先要求你**手动输入 `prod`** 确认，
+输入其他内容即取消；`--dry` 只读不写，不受此闸约束。非交互环境（CI、管道、重定向 stdin）
+会直接拒绝执行，这时才显式加 `--yes`：
+
+```bash
+npm run db:seed:ops:prod -- --yes                 # 明知是生产库、跳过确认
+node scripts/seed-ops.mjs --remote --yes --purge
+```
+
+路演清单里固定一条：**路演结束当天执行 `npm run db:seed:ops:purge:prod`**。合成数据长期留在
+生产库会污染真实运营统计（看板数字、AI 周报、口碑均分都会把它算进去）。
 
 `--live-only` 不是锦上添花：`expireStaleVisits` 挂在所有读路径上，预约 2 小时过期、入店 4 小时
 自动离店，"当前在店"必然随时间归零，开场前重跑一次即可（约 10 秒）。数据时间全部按执行时刻回推，
