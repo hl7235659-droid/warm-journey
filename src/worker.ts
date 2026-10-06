@@ -4,7 +4,11 @@
 // scheduled（Cron Trigger）handler，把 gc.sql 的台账清理真正定时化——
 // next-on-pages 没有 scheduled 能力，这是批次 9 迁移的欠账（P2-15）。
 // wrangler.toml 的 main 指向本文件。
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- 两环境错误存在性相反，理由见下一行注释
 // @ts-ignore `.open-next/worker.js` is generated at build time
+// （必须 ts-ignore 而非 ts-expect-error：本地 .open-next 存在时 import 可解析、
+//   错误不存在 → expect-error 会报 TS2578"未使用"；CI 干净 checkout 文件缺失 →
+//   TS2307。两环境行为相反，只有 ts-ignore 在两边都通过。）
 import { default as openNextWorker } from "../.open-next/worker.js";
 
 import { expireStaleVisits } from "./lib/db";

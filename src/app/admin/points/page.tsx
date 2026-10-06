@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import { useCanWrite } from '../admin-context';
 import { EmptyRow, LIST_PAGE_SIZE, Pager, SkeletonRows, useAdminList } from '@/components/admin/list';
@@ -32,7 +33,7 @@ export default function AdminPointsPage() {
     <>
       <div className="page-head">
         <h1 className="page-title">服务点管理</h1>
-        {canWrite && <a href="/admin/points/new" className="btn btn-primary btn-sm">+ 新增</a>}
+        {canWrite && <Link href="/admin/points/new" className="btn btn-primary btn-sm">+ 新增</Link>}
       </div>
 
       {/* Filters */}

@@ -1,8 +1,10 @@
+import Link from 'next/link';
+
 export default function NotFound() {
   return (
     <>
       <nav className="navbar">
-        <a href="/" className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem' }}>← 首页</a>
+        <Link href="/" className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem' }}>← 首页</Link>
         <span style={{ fontWeight: 600 }}>页面不存在</span>
       </nav>
       <main className="page" style={{ paddingTop: '4rem', textAlign: 'center' }}>
@@ -11,7 +13,7 @@ export default function NotFound() {
         <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.9rem' }}>
           该服务点可能已下线，或链接有误。
         </p>
-        <a href="/" className="btn btn-primary">返回服务点列表</a>
+        <Link href="/" className="btn btn-primary">返回服务点列表</Link>
       </main>
     </>
   );

@@ -1,0 +1,68 @@
+# CI 三道闸：类型 → 规范 → 测试 → 构建。
+# 背景：2026-10-05/06 两次生产事故均因"闸门只在本机执行"而漏网
+# （npm install 洗掉依赖版本、构建链静默劣化）。本流水线把闸门从
+# "个人纪律"变成"流程强制"：任何 push / PR 必须全绿才能合并部署。
+#
+# 全部步骤都不需要 Cloudflare 凭据：
+#   - test:workers 用 wrangler.test.toml（本地 workerd + 测试专用密钥）
+#   - build 只生成 .open-next 产物，不 deploy
+name: CI
+
+on:
+  push:
+    branches: [main, nuanru]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: 类型 / 规范 / 测试 / 构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（npm ci，严格按 lockfile）
+        run: npm ci
+
+      # ── 闸 1：类型 ──────────────────────────────────────────
+      # worker.ts 对 .open-next 产物的导入有 @ts-ignore，全新 checkout 可直接过
+      - name: 类型检查（tsc --noEmit）
+        run: npx tsc --noEmit
+
+      # ── 闸 2：规范 ──────────────────────────────────────────
+      - name: Lint（ESLint）
+        run: npm run lint
+
+      # ── 闸 3：测试 ──────────────────────────────────────────
+      # node 单测（纯函数）+ workers 集成测试（真实 workerd + D1）
+      - name: 单元测试（node --test）
+        run: npm test
+
+      - name: 集成测试（vitest-pool-workers，真实 D1）
+        run: npm run test:workers
+
+      # ── 闸 4：构建 ──────────────────────────────────────────
+      # 与 deploy.cjs 同一条构建命令：拦"构建链静默劣化"类事故
+      # （曾经的事故模式：依赖漂移导致产物缺路由/守卫）
+      - name: 构建（opennextjs-cloudflare）
+        run: npx opennextjs-cloudflare build
+
+      # 构建产物断言：防"构建成功但产物不对"的假绿。
+      # 注意 CSP/安全头在 src/worker.ts（部署入口，wrangler 按 main 现场打包），
+      # 不在 .open-next/worker.js（那只是 OpenNext 的默认模板）——别 grep 错对象。
+      - name: 构建产物断言
+        run: |
+          test -f .open-next/worker.js && echo "✓ OpenNext worker 已生成"
+          test -d .open-next/server-functions/default && echo "✓ Next server function 已生成"
+          test -d .open-next/assets && echo "✓ 静态资产已生成"
+          MAIN=$(grep -E '^main *=' wrangler.toml | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
+          test -f "$MAIN" && echo "✓ wrangler main 入口存在: $MAIN"

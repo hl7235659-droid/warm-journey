@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '@/lib/ai/types';
 import {
-  loadSessions, saveSessions, newSession, appendMessage, setSessionTitle, deleteSession,
+  loadSessions, saveSessions, newSession, setSessionTitle, deleteSession,
 } from '@/lib/ai/ai-store';
 
 // ---------- 面板拖拽（仅桌面端，顶栏为手柄） ----------

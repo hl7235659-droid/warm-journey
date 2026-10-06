@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { FEEDBACK_SUPPORT_TAGS } from '@/lib/types';
 import type { Visit } from '@/lib/types';
@@ -196,7 +197,7 @@ export default function CheckoutPage() {
             <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)', marginBottom: '1.5rem' }}>
               你的建议会直接送到驿站运营同学手里。
             </p>
-            <a href="/" className="btn btn-primary">回到首页</a>
+            <Link href="/" className="btn btn-primary">回到首页</Link>
           </div>
         )}
       </main>

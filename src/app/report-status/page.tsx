@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { REPORT_CATEGORY_LABELS, REPORT_STATUS_LABELS } from '@/lib/types';
 import type { ReportStatus } from '@/lib/types';
@@ -50,7 +51,7 @@ export default function ReportStatusPage() {
   return (
     <div className="slide">
       <nav className="navbar">
-        <a href="/" className="btn btn-ghost btn-sm" aria-label="返回首页" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>← 返回</a>
+        <Link href="/" className="btn btn-ghost btn-sm" aria-label="返回首页" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>← 返回</Link>
         <span className="navbar-title">上报进度查询</span>
       </nav>
 

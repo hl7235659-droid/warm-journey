@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import type { ServicePoint } from '@/lib/types';
 import { STATUS_LABELS, STATUS_SEALS } from '@/lib/types';
@@ -69,9 +70,9 @@ export default function PointDetailClient({ point, signals, occupancy }: Props) 
       <header className="band band-detail">
         <Corners />
         <div className="band-top anim-rise" style={{ marginBottom: '0.875rem' }}>
-          <a href="/" className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>
+          <Link href="/" className="btn btn-ghost btn-sm" style={{ padding: '0 0.5rem', color: 'var(--gold-300)' }}>
             ← 返回
-          </a>
+          </Link>
           <span style={{ flex: 1 }} />
           <span className={`seal ${statusClass} anim-stamp`} style={{ animationDelay: '300ms' }}>
             {STATUS_LABELS[point.status]}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useCanWrite } from '../admin-context';
 import { EmptyRow, SkeletonRows, useAdminList } from '@/components/admin/list';
 import type { ListResp } from '@/components/admin/list';

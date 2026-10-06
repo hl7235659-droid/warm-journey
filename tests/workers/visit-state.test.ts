@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  AUTO_CHECKOUT_AFTER, FEEDBACK_WINDOW, RESERVATION_TTL,
+  AUTO_CHECKOUT_AFTER, RESERVATION_TTL,
   cancelVisit, checkinVisit, checkoutVisit, createVisitFeedback, expireStaleVisits,
   getOccupancy, getRiderVisitState, getVisit, reserveVisit,
 } from '@/lib/db';

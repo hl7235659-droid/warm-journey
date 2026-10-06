@@ -134,12 +134,17 @@ npx wrangler d1 execute warm-journey-db --local --command "SELECT id,name FROM s
 ### 测试
 
 ```bash
+npm run lint          # ESLint（eslint.config.mjs：next/core-web-vitals + next/typescript，
+                      # 0 error / 0 warning 为提交基线；三条有据豁免见配置内注释）
 npm test             # scripts/tests/ 纯函数单测，26 例（SSRF 白名单 / 分页钳制 / 距离排序 / visit 出口脱敏 / LIKE 归一等）
 npm run test:workers # tests/workers/ 真实 workerd + 真实 D1，8 文件 122 例
                      #（withAdmin 守卫矩阵 / visit 状态机全格迁移表 / 容量并发 / 出口脱敏 / AI 降级与 action 协议）
 ```
 
 改哪类代码必须跑哪类测试、以及"新增 admin 路由 / visit 出口"的守恒约束，见[维护手册](维护手册.md) §3。
+
+仓库推送到 GitHub 后，`.github/workflows/ci.yml` 在每次 push / PR 自动跑同款四道闸
+（tsc → lint → 两套测试）+ OpenNext 构建 + 产物断言，全程不需要 Cloudflare 凭据。
 
 `test:workers` 用 vitest-pool-workers，绑定来自 `wrangler.test.toml`（与生产同名的 DB / BUCKET，
 但 main 指向 `tests/workers/entry.ts`，因此**不需要先跑 OpenNext 构建**）；每个测试文件一份独立库，

@@ -51,7 +51,7 @@ export default function AdminKnowledgePage() {
     return { ok: true, data: j.data.items, total: j.data.total };
   }, [category, q]);
 
-  const { items, total, page, loading, error, reload } = useAdminList(fetchKnowledge);
+  const { items, total, loading, error, reload } = useAdminList(fetchKnowledge);
 
   const {
     showForm, saving, formError, setFormError, form, setForm, openForm, closeForm: closeBaseForm, submit,

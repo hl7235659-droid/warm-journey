@@ -4,6 +4,9 @@
 
 // env.DB / env.JWT_SECRET 的类型来源即 src/env.d.ts 的全局 CloudflareEnv
 declare namespace Cloudflare {
+  // 空接口扩展是刻意的声明合并惯用法（cloudflare:test 侧要求 interface 而非
+  // type alias，后者无法参与命名空间合并），非死代码。
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface Env extends CloudflareEnv {}
 }
 

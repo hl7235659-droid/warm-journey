@@ -22,6 +22,7 @@
     "db:seed:ops:purge:prod": "node scripts/seed-ops.mjs --remote --purge",
     "test": "node --experimental-strip-types --test \"scripts/tests/*.test.mjs\"",
     "test:workers": "vitest run --config vitest.workers.config.mts",
+    "lint": "eslint src tests",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:create:prod": "node scripts/create-admin.mjs --remote"
   },
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20261006.1",
+    "@eslint/eslintrc": "^3.3.7",
     "@opennextjs/cloudflare": "^1.20.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.29",
@@ -45,7 +47,8 @@
     "@vitest/runner": "^4.1.11",
     "@vitest/snapshot": "^4.1.11",
     "esbuild": "^0.25.12",
-    "rclone.js": "^0.6.6",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.27",
     "typescript": "^5.8.3",
     "vitest": "^4.1.11",
     "wrangler": "^4.19.0"

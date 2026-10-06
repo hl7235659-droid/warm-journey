@@ -144,6 +144,17 @@ export default function AiDock() {
   }, [ensureSession, getSession, providerStore, commit]);
 
   // ---------- 操作执行 ----------
+  // useCallback + 声明在前：handleExecuteAction 的依赖数组要引用它；
+  // 体内只依赖 commit（setState 级稳定引用），不会引起回调重建。
+  const markActionDone = useCallback((sessionId: string, msgTs: number) => {
+    commit((list) => list.map((s) =>
+      s.id !== sessionId ? s : {
+        ...s,
+        messages: s.messages.map((m) => (m.ts === msgTs && m.action ? { ...m, actionDone: true } : m)),
+      },
+    ));
+  }, [commit]);
+
   const handleExecuteAction = useCallback(async (action: AiAction, msgTs: number) => {
     const session = getActiveSession();
     if (!session) return;
@@ -163,16 +174,7 @@ export default function AiDock() {
     if (!result.ok && result.message) {
       commit((list) => appendMessage(list, session.id, { role: 'assistant', content: result.message, mode: 'local', ts: Date.now() }));
     }
-  }, [router, commit, getActiveSession]);
-
-  function markActionDone(sessionId: string, msgTs: number) {
-    commit((list) => list.map((s) =>
-      s.id !== sessionId ? s : {
-        ...s,
-        messages: s.messages.map((m) => (m.ts === msgTs && m.action ? { ...m, actionDone: true } : m)),
-      },
-    ));
-  }
+  }, [router, commit, getActiveSession, markActionDone]);
 
   // ---------- 会话操作（抽屉联动部分留在调度层） ----------
   const handleNewSession = useCallback(() => {
