@@ -22,6 +22,11 @@
 --     新建巡检全部报 "no such column" 而 500。
 --   * 反过来是安全的：这五列要么可空、要么有 DEFAULT，新代码的 INSERT 一律显式列表，
 --     读取又走 deserializePoint 的显式挑字段，所以"新代码 + 未删列的老库"完全正常。
+--     该反向安全性已用**部署产物 + 生产快照导入的隔离库**全链路实测（公开读 / 管理端四种写 /
+--     工单备注往返 / 历史快照 / reserve-checkin-active-checkout / 上报查询码往返）：全绿。
+--   * 批次 7 构建已部署到 Pages 的 preview-7 分支（deployment 59261a78），但 Pages 的
+--     **Preview 环境没有绑定 D1/R2**，所有读写路由在预览域名一律 500，因此预览域名不能
+--     充当上面那个"已部署到生产"的前置条件。真正满足它只需要把该构建晋级到生产分支 nuanru。
 --
 -- 注：work_orders.assigned_name 不在这份文件里——它是 listWorkOrders/getWorkOrder 里
 -- `au.display_name as assigned_name` 的 JOIN 别名，不是列（修复计划原 SQL 的笔误）。
