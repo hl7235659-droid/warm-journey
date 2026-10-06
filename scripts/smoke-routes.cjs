@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 // 同一实例多路由冒烟测试（2026-10-05 生产事故后新增的验收维度）。
 //
-// 背景：Cloudflare Pages 把所有函数跑在同一个 worker/isolate。next-on-pages 的
-// 共享 webpack chunk 会重复执行 Object.defineProperty("__import_unsupported")，
-// 若守卫缺失，第二个及以后加载的路由会抛 "Cannot redefine property" → 500。
-// 逐路由单独冷启动的测试从构造上发现不了该问题——必须同一 server 实例内
-// 连打多个不同路由。本脚本就是干这个的。
+// 背景：同 isolate 内多路由连打才能暴露跨路由的运行时冲突。历史事故一（Pages 时代）：
+// next-on-pages 的共享 chunk 重复执行 Object.defineProperty("__import_unsupported")，
+// 守卫缺失时第二个及以后加载的路由 500。历史事故二：路由表丢根映射时 `GET /` 返回
+// 200 + text/plain "Not Found"。批次 9 迁 OpenNext Workers 后两项断言保留——
+// 多路由冲突的构造性测试与"状态码对但内容错"的检测在任何架构下都成立。
 //
 // 用法：node scripts/smoke-routes.cjs <baseUrl> [--rounds=3]
-//   本地：node scripts/smoke-routes.cjs http://127.0.0.1:8899
-//   线上：node scripts/smoke-routes.cjs https://warm-journey.pages.dev
+//   本地：node scripts/smoke-routes.cjs http://127.0.0.1:8787
+//   线上：node scripts/smoke-routes.cjs https://warm-journey.hl7235659.workers.dev
+// workers.dev 在国内直连被墙：HTTPS_PROXY=http://127.0.0.1:7897 node scripts/smoke-routes.cjs ...
+// （脚本检测到 HTTPS_PROXY 时自动走代理）
 //
 // 判定：
 //   - 任意 500，或响应体含 __import_unsupported / Cannot redefine → FAIL
 //   - GET 公开路由必须 200；confirm 无 token 必须 4xx（200 = 还在跑修复前代码）
-//   - 标记为 html 的路由还必须真的返回 HTML：next-on-pages 1.13.10 丢根路由映射时，
-//     `GET /` 是 HTTP 200 + text/plain "Not Found"，只看状态码会漏掉整站首页。
+//   - 标记为 html 的路由还必须真的返回 HTML（防"状态码对但内容错"）。
 
 const base = (process.argv[2] || '').replace(/\/+$/, '');
 if (!base || !/^https?:\/\//.test(base)) {
@@ -27,6 +28,14 @@ for (let k = 2; k < process.argv.length; k++) {
   const a = process.argv[k];
   if (a.startsWith('--rounds=')) rounds = Number.parseInt(a.slice(9), 10) || rounds;
   else if (a === '--rounds') rounds = Number.parseInt(process.argv[++k], 10) || rounds;
+}
+
+// 国内直连 workers.dev 被墙：有 HTTPS_PROXY 时让 node fetch 走代理。
+// 根级没有直接依赖 undici，用 wrangler 带的那份（版本随 wrangler 走，API 稳定）。
+if (process.env.HTTPS_PROXY || process.env.https_proxy) {
+  const undiciPath = require('path').join(__dirname, '..', 'node_modules', 'wrangler', 'node_modules', 'undici');
+  const { EnvHttpProxyAgent, setGlobalDispatcher } = require(undiciPath);
+  setGlobalDispatcher(new EnvHttpProxyAgent());
 }
 
 const GET_ROUTES = [
