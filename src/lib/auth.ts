@@ -32,7 +32,8 @@ async function verifyToken(
   env?: { JWT_SECRET?: string },
 ): Promise<AdminPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret(env));
+    // 显式钉死验签算法：不写时 jose 按密钥类型推断，算法协商面留给将来踩坑
+    const { payload } = await jwtVerify(token, getSecret(env), { algorithms: [ALG] });
     return payload as unknown as AdminPayload;
   } catch {
     return null;
